@@ -5,7 +5,7 @@ The project is a **multitenant omnichannel CRM-like API** (similar to Zendesk or
 
 ---
 
-## 1. System Overview
+## System Overview
 
 * **Architecture**: Modular NestJS API
 * **Domain**: Omnichannel CRM (messages, conversations, contacts, agents)
@@ -18,7 +18,7 @@ Each agent described below operates within strict tenant boundaries and must nev
 
 ---
 
-## 2. Agent Principles
+## Agent Principles
 
 All agents must follow these principles:
 
@@ -30,7 +30,7 @@ All agents must follow these principles:
 
 ---
 
-## 3. Core Agents
+## Core Agents
 
 ### Auth Agent
 
@@ -219,9 +219,24 @@ Agents should emit:
 
 ---
 
+## Code Guidelines
+
+### Enums
+Follow the next example for enums declaration
+```js
+enum CardinalDirections {
+    North = "NORTH",
+    South = "SOUTH",
+    East = "EAST",
+    West = "WEST"
+}
+```
+
 ## Docs
 
 Docs should be in the **/docs** folder
+
+---
 
 ## Ownership
 
@@ -234,4 +249,6 @@ Any architectural change that impacts:
 * channel integrations
 
 **must update this file accordingly.**
+
+---
 

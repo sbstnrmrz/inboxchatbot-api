@@ -4,9 +4,9 @@ import { Document, Types } from 'mongoose';
 export type MembershipDocument = Membership & Document;
 
 export enum MembershipStatus {
-  ACTIVE = 'active',
-  SUSPENDED = 'suspended',
-  DISABLED = 'disabled',
+  Active = 'ACTIVE',
+  Suspended = 'SUSPENDED',
+  Disabled = 'DISABLED',
 }
 
 @Schema({ timestamps: true })
@@ -18,7 +18,7 @@ export class Membership {
     required: true,
     type: String,
     enum: Object.values(MembershipStatus),
-    default: MembershipStatus.ACTIVE,
+    default: MembershipStatus.Active,
   })
   status: MembershipStatus;
 
@@ -53,20 +53,19 @@ MembershipSchema.index({ status: 1 });
 MembershipSchema.index({ tenantId: 1, status: 1 });
 
 // Pre-save middleware to track status changes
-MembershipSchema.pre('save', function (this: MembershipDocument, next) {
+MembershipSchema.pre('save', function () {
   if (this.isModified('status')) {
     this.statusChangedAt = new Date();
 
-    if (this.status === MembershipStatus.SUSPENDED) {
+    if (this.status === MembershipStatus.Suspended) {
       this.suspendedAt = new Date();
-    } else if (this.status === MembershipStatus.DISABLED) {
+    } else if (this.status === MembershipStatus.Disabled) {
       this.disabledAt = new Date();
     } else if (
-      this.status === MembershipStatus.ACTIVE &&
+      this.status === MembershipStatus.Active &&
       this.isModified('status')
     ) {
       this.reactivatedAt = new Date();
     }
   }
-  next();
 });

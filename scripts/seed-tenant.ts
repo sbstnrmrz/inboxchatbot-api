@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import mongoose from 'mongoose';
 import { TenantSchema } from '../src/tenants/schemas/tenant.schema';
 import {
@@ -11,6 +10,13 @@ const Membership = mongoose.model('Membership', MembershipSchema);
 
 async function main() {
   await mongoose.connect(process.env.MONGODB_URI!);
+
+  const existingTenant = await Tenant.findOne({ slug: 'crazybot' });
+  if (existingTenant) {
+    console.log('Tenant already exists:', existingTenant.toObject());
+    await mongoose.disconnect();
+    return;
+  }
 
   const tenant = await Tenant.create({
     slug: 'crazybot',

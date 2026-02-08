@@ -2,26 +2,33 @@ import { betterAuth } from 'better-auth';
 import { admin } from 'better-auth/plugins/admin';
 import { mongodbAdapter } from 'better-auth/adapters/mongodb';
 import { MongoClient } from 'mongodb';
+import { ac, user, admin as adminRole, superAdmin } from './permissions';
 
 const client = new MongoClient(process.env.MONGODB_URI!);
+
+const isProduction = process.env.NODE_ENV === 'production';
 
 client.connect().then(() => {
   client.db().collection('user').createIndex({ tenantId: 1 });
 });
 
 export const auth = betterAuth({
+  baseURL: process.env.BETTER_AUTH_URL,
   basePath: '/auth',
+  trustedOrigins: ['http://localtest.me:5173'],
+  advanced: {
+    useSecureCookies: isProduction,
+    crossSubDomainCookies: {
+      enabled: true,
+      domain: isProduction ? process.env.FRONTEND_URL : 'localtest.me', // your domain
+    },
+  },
+
   database: mongodbAdapter(client.db(), { client }),
   emailAndPassword: {
     enabled: true,
     disableSignUp: true,
   },
-  plugins: [
-    admin({
-      adminRoles: ['admin', 'superadmin'],
-      defaultRole: 'user',
-    }),
-  ],
   user: {
     additionalFields: {
       tenantId: {
@@ -30,4 +37,15 @@ export const auth = betterAuth({
       },
     },
   },
+  plugins: [
+    admin({
+      ac,
+      roles: {
+        user,
+        admin: adminRole,
+        superadmin: superAdmin,
+      },
+      defaultRole: 'user',
+    }),
+  ],
 });

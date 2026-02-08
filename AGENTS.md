@@ -237,6 +237,9 @@ enum CardinalDirections {
 
 Docs should be in the **/docs** folder
 
+### better-auth
+Check docs with https://www.better-auth.com/llms.txt
+
 ---
 
 ## Ownership

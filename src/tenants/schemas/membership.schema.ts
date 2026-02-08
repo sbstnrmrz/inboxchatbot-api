@@ -11,7 +11,7 @@ export enum MembershipStatus {
 
 @Schema({ timestamps: true })
 export class Membership {
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Tenant', index: true })
+  @Prop({ required: true, type: Types.ObjectId, ref: 'Tenant' })
   tenantId: Types.ObjectId;
 
   @Prop({
@@ -22,22 +22,22 @@ export class Membership {
   })
   status: MembershipStatus;
 
-  @Prop()
+  @Prop({ type: String })
   reason?: string;
 
-  @Prop()
+  @Prop({ type: Date })
   statusChangedAt?: Date;
 
   @Prop({ type: Types.ObjectId, ref: 'User' })
   statusChangedBy?: Types.ObjectId;
 
-  @Prop()
+  @Prop({ type: Date })
   suspendedAt?: Date;
 
-  @Prop()
+  @Prop({ type: Date })
   disabledAt?: Date;
 
-  @Prop()
+  @Prop({ type: Date })
   reactivatedAt?: Date;
 
   // Timestamps (auto-managed by mongoose)

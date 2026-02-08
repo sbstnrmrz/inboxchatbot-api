@@ -26,10 +26,16 @@ export interface InstagramInfo {
 
 @Schema({ timestamps: true })
 export class Tenant {
-  @Prop({ required: true, unique: true, lowercase: true, trim: true })
+  @Prop({
+    type: String,
+    required: true,
+    unique: true,
+    lowercase: true,
+    trim: true,
+  })
   slug: string;
 
-  @Prop({ required: true, trim: true })
+  @Prop({ type: String, required: true, trim: true })
   name: string;
 
   @Prop({ type: Object, select: false })
@@ -46,7 +52,6 @@ export class Tenant {
 export const TenantSchema = SchemaFactory.createForClass(Tenant);
 
 // Indexes
-TenantSchema.index({ slug: 1 }, { unique: true });
 TenantSchema.index({ createdAt: -1 });
 
 // Pre-save middleware to ensure slug is URL-friendly

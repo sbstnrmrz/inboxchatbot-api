@@ -1,20 +1,33 @@
-import 'dotenv/config';
+import mongoose from 'mongoose';
 import { auth } from '../src/lib/auth';
+import { TenantSchema } from '../src/tenants/schemas/tenant.schema';
+
+const Tenant = mongoose.model('Tenant', TenantSchema);
 
 async function main() {
+  await mongoose.connect(process.env.MONGODB_URI!);
+
+  const tenant = await Tenant.findOne({ slug: 'crazybot' });
+  if (!tenant) {
+    console.error('Tenant "crazybot" not found. Run seed-tenant.ts first.');
+    await mongoose.disconnect();
+    process.exit(1);
+  }
+
   const user = await auth.api.createUser({
     body: {
-      email: 'admin@example.com',
-      password: 'securepassword',
-      name: 'Admin',
-      role: 'user',
+      email: 'admin@crazybot.com',
+      password: 'cra.zyBott.2365',
+      name: 'Admin Crazybot',
+      role: 'admin',
       data: {
-        tenantId: 'your-tenant-id',
+        tenantId: tenant._id.toString(),
       },
     },
   });
 
   console.log('User created:', user);
+  await mongoose.disconnect();
 }
 
 main().catch(console.error);

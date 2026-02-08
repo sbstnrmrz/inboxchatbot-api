@@ -1,4 +1,5 @@
 import { betterAuth } from 'better-auth';
+import { admin } from 'better-auth/plugins/admin';
 import { mongodbAdapter } from 'better-auth/adapters/mongodb';
 import { MongoClient } from 'mongodb';
 
@@ -15,16 +16,17 @@ export const auth = betterAuth({
     enabled: true,
     disableSignUp: true,
   },
+  plugins: [
+    admin({
+      adminRoles: ['admin', 'superadmin'],
+      defaultRole: 'user',
+    }),
+  ],
   user: {
     additionalFields: {
       tenantId: {
         type: 'string',
         required: true,
-      },
-      role: {
-        type: 'string',
-        required: true,
-        defaultValue: 'AGENT',
       },
     },
   },

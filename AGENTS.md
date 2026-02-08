@@ -13,6 +13,7 @@ The project is a **multitenant omnichannel CRM-like API** (similar to Zendesk or
 * **Channels**: WhatsApp, Instagram (extensible to others)
 * **Database**: MongoDB with Mongoose
 * **Authentication**: Better Auth
+* **Package Manager**: pnpm
 
 Each agent described below operates within strict tenant boundaries and must never leak data across tenants.
 

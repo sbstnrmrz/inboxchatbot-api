@@ -7,7 +7,7 @@ const Tenant = mongoose.model('Tenant', TenantSchema);
 async function main() {
   await mongoose.connect(process.env.MONGODB_URI!);
 
-  const tenant = await Tenant.findOne({ slug: 'crazybot' });
+  const tenant = await Tenant.findOne({ slug: 'example' });
   if (!tenant) {
     console.error('Tenant "crazybot" not found. Run seed-tenant.ts first.');
     await mongoose.disconnect();
@@ -16,10 +16,10 @@ async function main() {
 
   const user = await auth.api.createUser({
     body: {
-      email: 'admin@crazybot.com',
-      password: 'cra.zyBott.2365',
-      name: 'Admin Crazybot',
-      role: 'admin',
+      email: 'email@example.com',
+      password: 'password.example',
+      name: 'User example',
+      role: 'user',
       data: {
         tenantId: tenant._id.toString(),
       },

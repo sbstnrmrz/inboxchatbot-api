@@ -11,7 +11,7 @@ const Membership = mongoose.model('Membership', MembershipSchema);
 async function main() {
   await mongoose.connect(process.env.MONGODB_URI!);
 
-  const existingTenant = await Tenant.findOne({ slug: 'crazybot' });
+  const existingTenant = await Tenant.findOne({ slug: 'example' });
   if (existingTenant) {
     console.log('Tenant already exists:', existingTenant.toObject());
     await mongoose.disconnect();
@@ -19,8 +19,8 @@ async function main() {
   }
 
   const tenant = await Tenant.create({
-    slug: 'crazybot',
-    name: 'Crazybot',
+    slug: 'example',
+    name: 'example',
   });
 
   await Membership.create({

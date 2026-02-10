@@ -4,15 +4,19 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
 import { UsersModule } from './users/users.module';
+import { TenantsModule } from './tenants/tenants.module';
+import { MembershipsModule } from './memberships/memberships.module';
 import { AuthModule } from '@thallesp/nestjs-better-auth';
 import { auth } from './lib/auth';
 
 @Module({
   imports: [
-    AuthModule.forRoot({auth}),
+    AuthModule.forRoot({ auth }),
     ConfigModule.forRoot({ isGlobal: true }),
     DatabaseModule,
     UsersModule,
+    TenantsModule,
+    MembershipsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -73,6 +73,13 @@ export class MembershipsService {
     return membership.save();
   }
 
+  async deleteByTenant(tenantId: string): Promise<void> {
+    await this.membershipModel
+      .findOneAndDelete({ tenantId: new Types.ObjectId(tenantId) })
+      .lean()
+      .exec();
+  }
+
   async isActive(tenantId: string): Promise<boolean> {
     const membership = await this.membershipModel
       .findOne({ tenantId: new Types.ObjectId(tenantId) })

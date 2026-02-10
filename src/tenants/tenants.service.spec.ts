@@ -270,6 +270,15 @@ describe('TenantsService', () => {
       );
     });
 
+    it('should delete the associated membership when removing a tenant', async () => {
+      const created = await service.create(BASE_DTO);
+      await service.remove(String(created._id));
+
+      await expect(
+        membershipsService.findByTenant(String(created._id)),
+      ).rejects.toThrow(NotFoundException);
+    });
+
     it('should throw NotFoundException for unknown id', async () => {
       await expect(service.remove('000000000000000000000000')).rejects.toThrow(
         NotFoundException,

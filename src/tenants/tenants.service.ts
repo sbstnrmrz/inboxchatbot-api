@@ -98,6 +98,8 @@ export class TenantsService {
       throw new NotFoundException(`Tenant with id "${id}" not found`);
     }
 
+    await this.membershipsService.deleteByTenant(id);
+
     return { deleted: true };
   }
 }

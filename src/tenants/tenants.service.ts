@@ -66,6 +66,20 @@ export class TenantsService {
     return tenant;
   }
 
+  async getSlugById(id: string): Promise<string> {
+    const tenant = await this.tenantModel
+      .findById(id)
+      .select('slug')
+      .lean()
+      .exec();
+
+    if (!tenant) {
+      throw new NotFoundException(`Tenant with id "${id}" not found`);
+    }
+
+    return tenant.slug;
+  }
+
   async resolveId(idOrSlug: string): Promise<string> {
     if (isValidObjectId(idOrSlug)) {
       const tenant = await this.findOne(idOrSlug);

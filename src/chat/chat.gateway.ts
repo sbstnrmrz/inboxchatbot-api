@@ -1,10 +1,18 @@
-import { ConnectedSocket, OnGatewayConnection, OnGatewayDisconnect, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
+import {
+  ConnectedSocket,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  SubscribeMessage,
+  WebSocketGateway,
+  WebSocketServer,
+} from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { SocketEvent } from './enums/socket-events.enum';
 import { Logger, UseGuards } from '@nestjs/common';
 import { MessageEvent } from './enums/message-events.enum';
 import { SocketAuthGuard } from 'src/auth/guards/socket-auth.guard';
 import { ConfigService } from '@nestjs/config';
+import { TenantsService } from '../tenants/tenants.service';
 
 // TODO: when production config origin
 @WebSocketGateway({
@@ -12,14 +20,16 @@ import { ConfigService } from '@nestjs/config';
   cors: {
     origin: process.env.FRONTEND_URL,
     credentials: true,
-  }
+  },
 })
-
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
-  constructor(private readonly socketAuthGuard: SocketAuthGuard) {}
+  constructor(
+    private readonly socketAuthGuard: SocketAuthGuard,
+    private readonly tenantsService: TenantsService,
+  ) {}
 
   private readonly logger = new Logger(ChatGateway.name);
 
@@ -27,15 +37,20 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleConnection(client: Socket) {
     this.logger.debug('Socket client trying to connect');
     try {
-     const isAuthorized = await this.socketAuthGuard.canActivate({
+      const isAuthorized = await this.socketAuthGuard.canActivate({
         switchToWs: () => ({ getClient: () => client }),
       } as any);
       if (!isAuthorized) {
         client.disconnect();
-        return; 
+        return;
       }
 
-      this.logger.debug(`Socket client ${client.id} connected`);
+      const tenantId = client.data.session.user.tenantId;
+      await client.join(tenantId);
+      const tenantSlug = await this.tenantsService.getSlugById(tenantId);
+      this.logger.debug(
+        `Socket client ${client.id} joined tenant room ${tenantId} (${tenantSlug}) ✅`,
+      );
     } catch (error) {
       this.logger.error(`Socket client ${client.id} failed to connect`);
       client.disconnect();

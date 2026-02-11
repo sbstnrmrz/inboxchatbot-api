@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
   path: '/socket',
   cors: {
     origin: process.env.FRONTEND_URL,
+    credentials: true,
   }
 })
 
@@ -18,12 +19,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
+  constructor(private readonly socketAuthGuard: SocketAuthGuard) {}
+
   private readonly logger = new Logger(ChatGateway.name);
 
-  @UseGuards(SocketAuthGuard)
   @SubscribeMessage(SocketEvent.Connect)
-  async handleConnection(client: Socket, payload: any) {
+  async handleConnection(client: Socket) {
+    this.logger.debug('Socket client trying to connect');
     try {
+     const isAuthorized = await this.socketAuthGuard.canActivate({
+        switchToWs: () => ({ getClient: () => client }),
+      } as any);
+      if (!isAuthorized) {
+        client.disconnect();
+        return; 
+      }
+
       this.logger.debug(`Socket client ${client.id} connected`);
     } catch (error) {
       this.logger.error(`Socket client ${client.id} failed to connect`);

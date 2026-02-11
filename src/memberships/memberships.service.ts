@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -18,12 +19,17 @@ export class MembershipsService {
     @InjectModel(Membership.name)
     private readonly membershipModel: Model<MembershipDocument>,
   ) {}
+  private readonly logger = new Logger(MembershipsService.name);
 
   async createForTenant(tenantId: string): Promise<MembershipDocument> {
     const membership = new this.membershipModel({
       tenantId: new Types.ObjectId(tenantId),
       status: MembershipStatus.Active,
     });
+    
+    this.logger.log(`Membership for Tenant ${tenantId}`);
+    this.logger.log(membership);
+
     return membership.save();
   }
 

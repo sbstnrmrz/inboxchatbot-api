@@ -4,9 +4,9 @@ import { Document, Types } from 'mongoose';
 export type UserDocument = User & Document;
 
 export enum UserRole {
-  SuperAdmin = 'SUPER_ADMIN',
-  Admin = 'ADMIN',
-  Agent = 'AGENT',
+  SuperAdmin = 'superadmin',
+  Admin = 'admin',
+  User = 'user',
 }
 
 @Schema({ timestamps: true })
@@ -33,7 +33,7 @@ export class User {
     required: true,
     type: String,
     enum: Object.values(UserRole),
-    default: UserRole.Agent,
+    default: UserRole.User,
   })
   role: UserRole;
 

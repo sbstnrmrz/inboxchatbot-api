@@ -2,9 +2,10 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { isValidObjectId, Model } from 'mongoose';
 import { Tenant, TenantDocument } from './schemas/tenant.schema.js';
 import { CreateTenantDto } from './dto/create-tenant.dto.js';
 import { UpdateTenantDto } from './dto/update-tenant.dto.js';
@@ -17,6 +18,7 @@ export class TenantsService {
     private readonly tenantModel: Model<TenantDocument>,
     private readonly membershipsService: MembershipsService,
   ) {}
+  private readonly logger = new Logger(TenantsService.name);
 
   async create(createTenantDto: CreateTenantDto): Promise<TenantDocument> {
     const existing = await this.tenantModel
@@ -32,6 +34,8 @@ export class TenantsService {
 
     const tenant = new this.tenantModel(createTenantDto);
     const saved = await tenant.save();
+    this.logger.log(`Tenant Created Successfully ✅`);
+    this.logger.log(saved);
 
     await this.membershipsService.createForTenant(String(saved._id));
 
@@ -62,6 +66,16 @@ export class TenantsService {
     return tenant;
   }
 
+  async resolveId(idOrSlug: string): Promise<string> {
+    if (isValidObjectId(idOrSlug)) {
+      const tenant = await this.findOne(idOrSlug);
+      return String(tenant._id);
+    }
+
+    const tenant = await this.findBySlug(idOrSlug);
+    return String(tenant._id);
+  }
+
   async update(
     id: string,
     updateTenantDto: UpdateTenantDto,
@@ -87,6 +101,11 @@ export class TenantsService {
     if (!updated) {
       throw new NotFoundException(`Tenant with id "${id}" not found`);
     }
+
+    this.logger.log(
+      `Tenant with ID ${updated._id.toString()} Updated Succesfully`,
+    );
+    this.logger.log(updated);
 
     return updated;
   }

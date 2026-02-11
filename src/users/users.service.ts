@@ -1,26 +1,98 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { auth } from '../lib/auth';
+import { TenantsService } from '../tenants/tenants.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UsersService {
-  create(createUserDto: CreateUserDto) {
-    return 'This action adds a new user';
+  constructor(private readonly tenantsService: TenantsService) {}
+
+  async create(createUserDto: CreateUserDto, headers: Headers) {
+    const {
+      tenantId: tenantIdOrSlug,
+      name,
+      email,
+      password,
+      role,
+    } = createUserDto;
+    const tenantId = await this.tenantsService.resolveId(tenantIdOrSlug);
+
+    const result = await auth.api.createUser({
+      body: {
+        name,
+        email,
+        password,
+        role: role ?? 'user',
+        data: { tenantId },
+      },
+      headers,
+    });
+
+    if (!result) {
+      throw new BadRequestException('Failed to create user');
+    }
+
+    return result;
   }
 
-  findAll() {
-    return `This action returns all users`;
+  async findAll(headers: Headers) {
+    const result = await auth.api.listUsers({
+      query: {},
+      headers,
+    });
+
+    return result;
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} user`;
+  async findOne(id: string, headers: Headers) {
+    const result = await auth.api.listUsers({
+      query: {
+        filterField: 'id',
+        filterOperator: 'eq',
+        filterValue: id,
+        limit: 1,
+      },
+      headers,
+    });
+
+    if (!result?.users?.length) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
+
+    return result.users[0];
   }
 
-  update(id: number, updateUserDto: UpdateUserDto) {
-    return `This action updates a #${id} user`;
+  async update(id: string, updateUserDto: UpdateUserDto, headers: Headers) {
+    const result = await auth.api.adminUpdateUser({
+      body: {
+        userId: id,
+        data: updateUserDto,
+      },
+      headers,
+    });
+
+    if (!result) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
+
+    return result;
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} user`;
+  async remove(id: string, headers: Headers) {
+    const result = await auth.api.removeUser({
+      body: { userId: id },
+      headers,
+    });
+
+    if (!result) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
+
+    return result;
   }
 }

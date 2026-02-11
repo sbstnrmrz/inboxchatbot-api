@@ -91,10 +91,10 @@ export class Tenant {
   @Prop({ type: String, required: true, trim: true })
   name: string;
 
-  @Prop({ type: Object, select: false })
+  @Prop({ type: Object })
   whatsappInfo?: WhatsAppInfo;
 
-  @Prop({ type: Object, select: false })
+  @Prop({ type: Object })
   instagramInfo?: InstagramInfo;
 
   // Timestamps (auto-managed by mongoose)

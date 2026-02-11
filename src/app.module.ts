@@ -8,6 +8,8 @@ import { TenantsModule } from './tenants/tenants.module';
 import { MembershipsModule } from './memberships/memberships.module';
 import { AuthModule } from '@thallesp/nestjs-better-auth';
 import { auth } from './lib/auth';
+import { ChatGateway } from './chat/chat.gateway';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -17,6 +19,7 @@ import { auth } from './lib/auth';
     UsersModule,
     TenantsModule,
     MembershipsModule,
+    ChatModule
   ],
   controllers: [AppController],
   providers: [AppService],

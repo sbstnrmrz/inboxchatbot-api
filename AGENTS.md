@@ -289,6 +289,120 @@ enum CardinalDirections {
 }
 ```
 
+## Project Structure
+
+```
+src/
+├── main.ts                          # Bootstrap: NestFactory, CORS, port
+├── app.module.ts                    # Root module; wires all modules + TenantsMiddleware
+├── app.controller.ts / .service.ts  # Root health-check controller/service
+│
+├── auth/
+│   └── guards/
+│       └── socket-auth.guard.ts     # WebSocket auth guard (validates Better Auth session)
+│
+├── chat/
+│   ├── chat.gateway.ts              # Socket.IO gateway (OnGatewayConnection/Disconnect)
+│   ├── chat.module.ts
+│   └── enums/
+│       ├── socket-events.enum.ts
+│       └── message-events.enum.ts
+│
+├── conversations/
+│   ├── conversations.module.ts
+│   ├── conversations.controller.ts
+│   ├── conversations.service.ts
+│   ├── dto/
+│   │   ├── create-conversation.dto.ts
+│   │   └── update-conversation.dto.ts
+│   └── entities/
+│       └── conversation.entity.ts   # Stub (empty class — not yet implemented)
+│
+├── customers/
+│   ├── customers.module.ts
+│   └── schemas/
+│       └── customer.schema.ts
+│
+├── database/
+│   └── database.module.ts           # MongooseModule.forRootAsync via ConfigService
+│
+├── lib/
+│   ├── auth.ts                      # Better Auth instance (betterAuth config, admin plugin, RBAC)
+│   └── permissions.ts               # RBAC roles: user, admin, superAdmin via createAccessControl
+│
+├── memberships/
+│   ├── memberships.module.ts
+│   ├── memberships.service.ts
+│   └── dto/
+│       └── update-membership.dto.ts
+│
+├── messages/
+│   └── dto/
+│       ├── whatsapp/                # 20 DTOs covering every WhatsApp webhook payload shape
+│       │   ├── index.ts
+│       │   ├── whatsapp-webhook.dto.ts
+│       │   ├── whatsapp-webhook-message.dto.ts
+│       │   └── ... (18 more)
+│       └── instagram/               # 16 DTOs covering every Instagram webhook payload shape
+│           ├── index.ts
+│           ├── instagram-webhook.dto.ts
+│           └── ... (14 more)
+│
+├── tenants/
+│   ├── tenants.module.ts
+│   ├── tenants.controller.ts
+│   ├── tenants.service.ts
+│   ├── tenants.middleware.ts        # Resolves tenantId from session or subdomain slug
+│   ├── dto/
+│   │   ├── create-tenant.dto.ts
+│   │   ├── update-tenant.dto.ts     # PartialType(CreateTenantDto)
+│   │   ├── whatsapp-info.dto.ts
+│   │   └── instagram-info.dto.ts
+│   └── schemas/
+│       ├── tenant.schema.ts
+│       └── membership.schema.ts
+│
+├── users/
+│   ├── users.module.ts
+│   ├── users.controller.ts
+│   ├── users.service.ts
+│   ├── dto/
+│   │   ├── create-user.dto.ts
+│   │   └── update-user.dto.ts
+│   └── schemas/
+│       └── user.schema.ts
+│
+└── utils/
+    ├── encryption.ts                # AES-256-GCM encrypt/decrypt/isEncrypted
+    └── test-db.helper.ts
+```
+
+---
+
+## Naming Conventions
+
+| Concern                   | Convention                                                                     | Example                                                |
+| ------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------ |
+| Files                     | `kebab-case.type.ts`                                                           | `tenants.service.ts`, `create-tenant.dto.ts`           |
+| Schema files              | `<entity>.schema.ts` in `schemas/` subdirectory                                | `src/tenants/schemas/tenant.schema.ts`                 |
+| DTO files                 | `<action>-<entity>.dto.ts`                                                     | `create-tenant.dto.ts`, `update-membership.dto.ts`     |
+| Webhook DTOs              | `<channel>-webhook-<part>.dto.ts`                                              | `whatsapp-webhook-message.dto.ts`                      |
+| Enum files                | `<concept>.enum.ts` in `enums/` subdirectory                                   | `src/chat/enums/socket-events.enum.ts`                 |
+| Classes                   | `PascalCase`                                                                   | `TenantsService`, `TenantDocument`, `CreateTenantDto`  |
+| Document types            | `type XDocument = X & Document`                                                | `TenantDocument`, `UserDocument`                       |
+| Schema exports            | `export const XSchema = SchemaFactory.createForClass(X)`                       | `TenantSchema`, `UserSchema`                           |
+| Local imports             | Use `.js` extension (ESM)                                                      | `import { Tenant } from './schemas/tenant.schema.js'`  |
+| Model injection token     | `Tenant.name` (class `.name` property)                                         | `@InjectModel(Tenant.name)`                            |
+| All queries               | `.lean().exec()` chained                                                       | `this.tenantModel.find().lean().exec()`                |
+| Indexes                   | Declared after `SchemaFactory.createForClass()`, always include `tenantId`     | `Schema.index({ tenantId: 1, updatedAt: -1 })`         |
+| `createdAt` / `updatedAt` | Optional fields on class body (not `@Prop`), managed by `{ timestamps: true }` | `createdAt?: Date; updatedAt?: Date;`                  |
+| Update DTOs               | Extend `PartialType(CreateXDto)` from `@nestjs/mapped-types`                   | `UpdateTenantDto extends PartialType(CreateTenantDto)` |
+| Logger                    | `private readonly logger = new Logger(ClassName.name)` after constructor       | Used in every service                                  |
+| Tenant isolation          | Every schema has `tenantId: Types.ObjectId` + compound index with `tenantId`   | Enforced at schema and query level                     |
+| Encryption                | Sensitive fields encrypted at rest via AES-256-GCM hooks in schema             | `pre('save')` + `post('save')` hooks on `TenantSchema` |
+
+---
+
 ## Docs
 
 Docs should be in the **/docs** folder

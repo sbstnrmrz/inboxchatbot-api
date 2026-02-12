@@ -11,6 +11,8 @@ import { AuthModule } from '@thallesp/nestjs-better-auth';
 import { auth } from './lib/auth';
 import { ChatGateway } from './chat/chat.gateway';
 import { ChatModule } from './chat/chat.module';
+import { ConversationsModule } from './conversations/conversations.module';
+import { CustomersModule } from './customers/customers.module';
 
 @Module({
   imports: [
@@ -21,6 +23,8 @@ import { ChatModule } from './chat/chat.module';
     TenantsModule,
     MembershipsModule,
     ChatModule,
+    ConversationsModule,
+    CustomersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

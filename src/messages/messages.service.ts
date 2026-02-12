@@ -21,6 +21,8 @@ import {
   ConversationStatus,
 } from '../conversations/schemas/conversation.schema.js';
 import { WhatsAppN8nWebhookItemDto } from './dto/whatsapp/whatsapp-n8n-webhook.dto.js';
+import { InstagramWebhookDto } from './dto/instagram/instagram-webhook.dto.js';
+import { InstagramWebhookEntryDto } from './dto/instagram/instagram-webhook-entry.dto.js';
 
 @Injectable()
 export class MessagesService {
@@ -170,6 +172,120 @@ export class MessagesService {
     return savedMessages;
   }
 
+  async processInstagramWebhook(
+    tenantId: string,
+    payload: InstagramWebhookDto,
+  ): Promise<MessageDocument[]> {
+    const tenantObjectId = new Types.ObjectId(tenantId);
+    const savedMessages: MessageDocument[] = [];
+
+    for (const entry of payload.entry) {
+      if (!entry.messaging?.length) continue;
+
+      for (const event of entry.messaging) {
+        // Only process actual messages — skip reads, reactions, postbacks
+        if (!event.message) continue;
+
+        // Skip echoes (messages sent by the business account itself)
+        if (event.message.is_echo) continue;
+
+        const senderId = event.sender.id;
+
+        // ── 1. Find or create customer ──────────────────────────────────────
+        let customer = await this.customerModel
+          .findOne({
+            tenantId: tenantObjectId,
+            'instagramInfo.accountId': senderId,
+          })
+          .lean()
+          .exec();
+
+        if (!customer) {
+          this.logger.log(
+            `Customer not found for ig_scoped_id=${senderId}, creating new customer`,
+          );
+          customer = await this.customerModel.create({
+            tenantId: tenantObjectId,
+            name: senderId,
+            instagramInfo: { accountId: senderId },
+          });
+        }
+
+        const customerObjectId = (customer as any)._id as Types.ObjectId;
+
+        // ── 2. Find or create active conversation ───────────────────────────
+        let conversation = await this.conversationModel
+          .findOne({
+            tenantId: tenantObjectId,
+            customerId: customerObjectId,
+            channel: ConversationChannel.Instagram,
+            status: {
+              $in: [ConversationStatus.Open, ConversationStatus.Pending],
+            },
+          })
+          .lean()
+          .exec();
+
+        if (!conversation) {
+          this.logger.log(
+            `No active Instagram conversation for customerId=${customerObjectId}, creating`,
+          );
+          conversation = await this.conversationModel.create({
+            tenantId: tenantObjectId,
+            customerId: customerObjectId,
+            channel: ConversationChannel.Instagram,
+            status: ConversationStatus.Open,
+          });
+        }
+
+        const conversationObjectId = (conversation as any)
+          ._id as Types.ObjectId;
+
+        // ── 3. Map message type & media ─────────────────────────────────────
+        const attachment = event.message.attachments?.[0];
+        const messageType = this.mapInstagramMessageType(
+          event.message.text,
+          attachment?.type,
+        );
+
+        const media = attachment?.payload?.url
+          ? { url: attachment.payload.url }
+          : undefined;
+
+        // ── 4. Persist message ──────────────────────────────────────────────
+        const sentAt = new Date(event.timestamp * 1000);
+
+        const message = await this.messageModel.create({
+          tenantId: tenantObjectId,
+          conversationId: conversationObjectId,
+          channel: MessageChannel.Instagram,
+          direction: MessageDirection.Inbound,
+          messageType,
+          sender: {
+            type: SenderType.Customer,
+            id: customerObjectId,
+          },
+          body: event.message.text,
+          media,
+          externalId: event.message.mid,
+          status: MessageStatus.Delivered,
+          sentAt,
+        });
+
+        // ── 5. Update conversation lastMessage ──────────────────────────────
+        await this.conversationModel.findByIdAndUpdate(conversationObjectId, {
+          lastMessage: message._id,
+          lastMessageAt: sentAt,
+          $inc: { unreadCount: 1 },
+        });
+
+        savedMessages.push(message);
+      }
+    }
+
+    return savedMessages;
+  }
+
   // ── Helpers ──────────────────────────────────────────────────────────────
 
   private mapWhatsAppMessageType(type: string): MessageType {
@@ -189,5 +305,29 @@ export class MessagesService {
       system: MessageType.System,
     };
     return map[type] ?? MessageType.Unknown;
+  }
+
+  /**
+   * Maps Instagram attachment type to internal MessageType.
+   * If text is present and no attachment, it's a TEXT message.
+   */
+  private mapInstagramMessageType(
+    text: string | undefined,
+    attachmentType: string | undefined,
+  ): MessageType {
+    if (attachmentType) {
+      const map: Record<string, MessageType> = {
+        image: MessageType.Image,
+        audio: MessageType.Audio,
+        video: MessageType.Video,
+        file: MessageType.Document,
+        reel: MessageType.Reel,
+        ig_reel: MessageType.Reel,
+        share: MessageType.Share,
+        like_heart: MessageType.Sticker,
+      };
+      return map[attachmentType] ?? MessageType.Unknown;
+    }
+    return text ? MessageType.Text : MessageType.Unknown;
   }
 }

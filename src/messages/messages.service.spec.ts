@@ -17,10 +17,31 @@ import {
   ConversationStatus,
 } from '../conversations/schemas/conversation.schema.js';
 import { WhatsAppN8nWebhookItemDto } from './dto/whatsapp/whatsapp-n8n-webhook.dto.js';
+import { InstagramWebhookDto } from './dto/instagram/instagram-webhook.dto.js';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const TENANT_ID = new Types.ObjectId().toHexString();
+
+const igTextPayload: InstagramWebhookDto = {
+  object: 'instagram',
+  entry: [
+    {
+      id: '123456789',
+      messaging: [
+        {
+          sender: { id: 'ig-scoped-id-001' },
+          recipient: { id: '123456789' },
+          timestamp: 1770928719,
+          message: {
+            mid: 'mid.abc123',
+            text: 'Hola desde Instagram',
+          },
+        },
+      ],
+    },
+  ],
+};
 
 const waTextPayload: WhatsAppN8nWebhookItemDto = {
   messaging_product: 'whatsapp',
@@ -276,6 +297,221 @@ describe('MessagesService', () => {
       const result = await service.processWhatsAppWebhook(
         TENANT_ID,
         emptyPayload,
+      );
+
+      expect(result).toEqual([]);
+      expect(customerModel.findOne).not.toHaveBeenCalled();
+      expect(messageModel.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Instagram: Case 1 — customer does NOT exist ───────────────────────────
+
+  describe('Instagram: when customer does not exist', () => {
+    const newCustomerId = new Types.ObjectId();
+    const newConversationId = new Types.ObjectId();
+    const newMessageId = new Types.ObjectId();
+
+    beforeEach(() => {
+      customerModel.findOne.mockReturnValue(leanExec(null));
+      customerModel.create.mockResolvedValue({
+        _id: newCustomerId,
+        name: 'ig-scoped-id-001',
+        instagramInfo: { accountId: 'ig-scoped-id-001' },
+      });
+      conversationModel.findOne.mockReturnValue(leanExec(null));
+      conversationModel.create.mockResolvedValue({
+        _id: newConversationId,
+        status: ConversationStatus.Open,
+        channel: ConversationChannel.Instagram,
+      });
+      messageModel.create.mockResolvedValue({
+        _id: newMessageId,
+        channel: MessageChannel.Instagram,
+        direction: MessageDirection.Inbound,
+        messageType: MessageType.Text,
+        body: 'Hola desde Instagram',
+        externalId: 'mid.abc123',
+        status: MessageStatus.Delivered,
+      });
+    });
+
+    it('should create a new customer with instagramInfo from the sender id', async () => {
+      await service.processInstagramWebhook(TENANT_ID, igTextPayload);
+
+      expect(customerModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          instagramInfo: { accountId: 'ig-scoped-id-001' },
+        }),
+      );
+    });
+
+    it('should create a new OPEN Instagram conversation for the new customer', async () => {
+      await service.processInstagramWebhook(TENANT_ID, igTextPayload);
+
+      expect(conversationModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          customerId: newCustomerId,
+          channel: ConversationChannel.Instagram,
+          status: ConversationStatus.Open,
+        }),
+      );
+    });
+
+    it('should persist the message linked to the new conversation', async () => {
+      await service.processInstagramWebhook(TENANT_ID, igTextPayload);
+
+      expect(messageModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: newConversationId,
+          channel: MessageChannel.Instagram,
+          direction: MessageDirection.Inbound,
+          messageType: MessageType.Text,
+          body: 'Hola desde Instagram',
+          externalId: 'mid.abc123',
+          sender: { type: SenderType.Customer, id: newCustomerId },
+        }),
+      );
+    });
+
+    it('should return the saved message', async () => {
+      const result = await service.processInstagramWebhook(
+        TENANT_ID,
+        igTextPayload,
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]._id).toEqual(newMessageId);
+    });
+  });
+
+  // ── Instagram: Case 2 — customer EXISTS ───────────────────────────────────
+
+  describe('Instagram: when customer already exists', () => {
+    const existingCustomerId = new Types.ObjectId();
+    const existingConversationId = new Types.ObjectId();
+    const newMessageId = new Types.ObjectId();
+
+    beforeEach(() => {
+      customerModel.findOne.mockReturnValue(
+        leanExec({
+          _id: existingCustomerId,
+          name: 'ig-scoped-id-001',
+          instagramInfo: { accountId: 'ig-scoped-id-001' },
+        }),
+      );
+      conversationModel.findOne.mockReturnValue(
+        leanExec({
+          _id: existingConversationId,
+          status: ConversationStatus.Open,
+          channel: ConversationChannel.Instagram,
+        }),
+      );
+      messageModel.create.mockResolvedValue({
+        _id: newMessageId,
+        channel: MessageChannel.Instagram,
+        direction: MessageDirection.Inbound,
+        messageType: MessageType.Text,
+        body: 'Hola desde Instagram',
+        externalId: 'mid.abc123',
+        status: MessageStatus.Delivered,
+      });
+    });
+
+    it('should NOT create a new customer', async () => {
+      await service.processInstagramWebhook(TENANT_ID, igTextPayload);
+
+      expect(customerModel.create).not.toHaveBeenCalled();
+    });
+
+    it('should NOT create a new conversation', async () => {
+      await service.processInstagramWebhook(TENANT_ID, igTextPayload);
+
+      expect(conversationModel.create).not.toHaveBeenCalled();
+    });
+
+    it('should persist the message linked to the existing conversation', async () => {
+      await service.processInstagramWebhook(TENANT_ID, igTextPayload);
+
+      expect(messageModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: existingConversationId,
+          sender: { type: SenderType.Customer, id: existingCustomerId },
+        }),
+      );
+    });
+
+    it('should update lastMessage and increment unreadCount on the conversation', async () => {
+      await service.processInstagramWebhook(TENANT_ID, igTextPayload);
+
+      expect(conversationModel.findByIdAndUpdate).toHaveBeenCalledWith(
+        existingConversationId,
+        expect.objectContaining({
+          lastMessage: newMessageId,
+          $inc: { unreadCount: 1 },
+        }),
+      );
+    });
+
+    it('should return the saved message', async () => {
+      const result = await service.processInstagramWebhook(
+        TENANT_ID,
+        igTextPayload,
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]._id).toEqual(newMessageId);
+    });
+  });
+
+  // ── Instagram: Case 3 — echo messages are skipped ─────────────────────────
+
+  describe('Instagram: when message is an echo', () => {
+    it('should skip the event and return an empty array', async () => {
+      const echoPayload: InstagramWebhookDto = {
+        object: 'instagram',
+        entry: [
+          {
+            id: '123456789',
+            messaging: [
+              {
+                sender: { id: 'ig-scoped-id-001' },
+                recipient: { id: '123456789' },
+                timestamp: 1770928719,
+                message: {
+                  mid: 'mid.echo001',
+                  text: 'Outbound echo',
+                  is_echo: true,
+                },
+              },
+            ],
+          },
+        ],
+      };
+
+      const result = await service.processInstagramWebhook(
+        TENANT_ID,
+        echoPayload,
+      );
+
+      expect(result).toEqual([]);
+      expect(customerModel.findOne).not.toHaveBeenCalled();
+      expect(messageModel.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Instagram: Case 4 — entry with no messaging events ────────────────────
+
+  describe('Instagram: when entry has no messaging events', () => {
+    it('should return an empty array without touching any model', async () => {
+      const noMessagingPayload: InstagramWebhookDto = {
+        object: 'instagram',
+        entry: [{ id: '123456789' }],
+      };
+
+      const result = await service.processInstagramWebhook(
+        TENANT_ID,
+        noMessagingPayload,
       );
 
       expect(result).toEqual([]);

@@ -37,7 +37,6 @@ export class Customer {
 
 export const CustomerSchema = SchemaFactory.createForClass(Customer);
 
-CustomerSchema.index({ tenantId: 1 });
 CustomerSchema.index(
   { tenantId: 1, 'whatsappInfo.id': 1 },
   { unique: true, sparse: true },

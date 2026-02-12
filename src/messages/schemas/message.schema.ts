@@ -170,14 +170,7 @@ export class Message {
   })
   messageType: MessageType;
 
-  @Prop({
-    required: true,
-    type: {
-      type: { type: String, enum: Object.values(SenderType), required: true },
-      id: { type: Types.ObjectId, required: false },
-    },
-    _id: false,
-  })
+  @Prop({ required: true, type: Object })
   sender: MessageSender;
 
   /** Plain text content — present when messageType is TEXT */

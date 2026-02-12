@@ -26,3 +26,7 @@ export {
   WhatsAppWebhookPricingDto,
 } from './whatsapp-webhook-status.dto.js';
 export { WhatsAppWebhookErrorDto } from './whatsapp-webhook-error.dto.js';
+export {
+  WhatsAppN8nWebhookDto,
+  WhatsAppN8nWebhookItemDto,
+} from './whatsapp-n8n-webhook.dto.js';

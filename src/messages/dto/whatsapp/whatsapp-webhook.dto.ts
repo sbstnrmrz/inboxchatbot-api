@@ -1,6 +1,6 @@
 import { IsString, IsNotEmpty, IsArray, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
-import { WhatsAppWebhookEntryDto } from './whatsapp-webhook-entry.dto.js';
+import { WhatsAppWebhookEntryDto } from './whatsapp-webhook-entry.dto';
 
 export class WhatsAppWebhookDto {
   @IsString()

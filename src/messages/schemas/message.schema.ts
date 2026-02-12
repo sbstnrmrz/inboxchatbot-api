@@ -94,6 +94,51 @@ export interface MessageMedia {
   size?: number;
 }
 
+// ─── Referral ─────────────────────────────────────────────────────────────────
+
+/**
+ * Normalized referral object — present when the message originated from an ad
+ * or external link that redirected the user to the conversation.
+ *
+ * WhatsApp: Click to WhatsApp ads
+ *   source_url, source_type (ad|post), source_id, headline, body,
+ *   media_type (image|video), image_url?, video_url?, thumbnail_url?
+ *
+ * Instagram: Click-to-Instagram Direct ads or ig.me/ links
+ *   ref, source, type (OPEN_THREAD)
+ */
+export interface MessageReferral {
+  /**
+   * URL that leads to the ad or post clicked by the user.
+   * WhatsApp: source_url  |  Instagram: source
+   */
+  sourceUrl?: string;
+  /**
+   * Type of the ad source.
+   * WhatsApp: "ad" | "post"  |  Instagram: "OPEN_THREAD" (type field)
+   */
+  sourceType?: string;
+  /** Meta ID for the ad or post (WhatsApp only) */
+  sourceId?: string;
+  /** Ad headline (WhatsApp only) */
+  headline?: string;
+  /** Ad body / description (WhatsApp only) */
+  body?: string;
+  /**
+   * Developer-defined ref parameter from the ig.me/ link (Instagram only).
+   * Equivalent to a UTM parameter for Instagram entry points.
+   */
+  ref?: string;
+  /** Media type present in the ad: "image" | "video" (WhatsApp only) */
+  mediaType?: string;
+  /** URL to the ad image (WhatsApp only, when mediaType is "image") */
+  imageUrl?: string;
+  /** URL to the ad video (WhatsApp only, when mediaType is "video") */
+  videoUrl?: string;
+  /** URL to the video thumbnail (WhatsApp only, when mediaType is "video") */
+  thumbnailUrl?: string;
+}
+
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
 @Schema({ timestamps: true })
@@ -169,6 +214,13 @@ export class Message {
   /** When the recipient read the message */
   @Prop({ type: Date })
   readAt?: Date;
+
+  /**
+   * Referral metadata — present when the conversation was initiated from an ad
+   * or external link (Click to WhatsApp / Click-to-Instagram Direct / ig.me/).
+   */
+  @Prop({ type: Object })
+  referral?: MessageReferral;
 
   createdAt?: Date;
   updatedAt?: Date;

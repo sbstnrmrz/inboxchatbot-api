@@ -13,6 +13,7 @@ import { ChatGateway } from './chat/chat.gateway';
 import { ChatModule } from './chat/chat.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { CustomersModule } from './customers/customers.module';
+import { MessagesModule } from './messages/messages.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { CustomersModule } from './customers/customers.module';
     ChatModule,
     ConversationsModule,
     CustomersModule,
+    MessagesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -283,4 +283,185 @@ describe('MessagesService', () => {
       expect(messageModel.create).not.toHaveBeenCalled();
     });
   });
+
+  // ── Case 4: Media message types ───────────────────────────────────────────
+  //
+  // Covers all WhatsApp media types per the Cloud API webhook reference:
+  // image, audio, video, document (with filename), sticker.
+  // Each case verifies that:
+  //   1. messageType is correctly mapped
+  //   2. media object is persisted with the right fields
+  //   3. body is undefined (no text content)
+
+  describe('media message types', () => {
+    const existingCustomerId = new Types.ObjectId();
+    const existingConversationId = new Types.ObjectId();
+    const newMessageId = new Types.ObjectId();
+
+    beforeEach(() => {
+      customerModel.findOne.mockReturnValue(
+        leanExec({
+          _id: existingCustomerId,
+          name: 'Miguel Vivas',
+          whatsappInfo: { id: '584147083834', name: 'Miguel Vivas' },
+        }),
+      );
+      conversationModel.findOne.mockReturnValue(
+        leanExec({
+          _id: existingConversationId,
+          status: ConversationStatus.Open,
+          channel: ConversationChannel.WhatsApp,
+        }),
+      );
+      messageModel.create.mockResolvedValue({ _id: newMessageId });
+    });
+
+    describe.each([
+      {
+        label: 'image',
+        waType: 'image',
+        mediaKey: 'image',
+        expectedType: MessageType.Image,
+        mediaPayload: {
+          id: '2754859441498128',
+          mime_type: 'image/jpeg',
+          sha256: 'abc123hash',
+          caption: 'This is a caption',
+        },
+        expectedMedia: {
+          whatsappMediaId: '2754859441498128',
+          mimeType: 'image/jpeg',
+          sha256: 'abc123hash',
+          caption: 'This is a caption',
+          filename: undefined,
+        },
+      },
+      {
+        label: 'audio',
+        waType: 'audio',
+        mediaKey: 'audio',
+        expectedType: MessageType.Audio,
+        mediaPayload: {
+          id: 'audio-media-id',
+          mime_type: 'audio/ogg; codecs=opus',
+          sha256: 'audiohash',
+        },
+        expectedMedia: {
+          whatsappMediaId: 'audio-media-id',
+          mimeType: 'audio/ogg; codecs=opus',
+          sha256: 'audiohash',
+          caption: undefined,
+          filename: undefined,
+        },
+      },
+      {
+        label: 'video',
+        waType: 'video',
+        mediaKey: 'video',
+        expectedType: MessageType.Video,
+        mediaPayload: {
+          id: 'video-media-id',
+          mime_type: 'video/mp4',
+          sha256: 'videohash',
+          caption: 'Watch this',
+        },
+        expectedMedia: {
+          whatsappMediaId: 'video-media-id',
+          mimeType: 'video/mp4',
+          sha256: 'videohash',
+          caption: 'Watch this',
+          filename: undefined,
+        },
+      },
+      {
+        label: 'document',
+        waType: 'document',
+        mediaKey: 'document',
+        expectedType: MessageType.Document,
+        mediaPayload: {
+          id: 'doc-media-id',
+          mime_type: 'application/pdf',
+          sha256: 'dochash',
+          filename: 'invoice.pdf',
+          caption: 'Here is the invoice',
+        },
+        expectedMedia: {
+          whatsappMediaId: 'doc-media-id',
+          mimeType: 'application/pdf',
+          sha256: 'dochash',
+          caption: 'Here is the invoice',
+          filename: 'invoice.pdf',
+        },
+      },
+      {
+        label: 'sticker',
+        waType: 'sticker',
+        mediaKey: 'sticker',
+        expectedType: MessageType.Sticker,
+        mediaPayload: {
+          id: 'sticker-media-id',
+          mime_type: 'image/webp',
+          sha256: 'stickerhash',
+        },
+        expectedMedia: {
+          whatsappMediaId: 'sticker-media-id',
+          mimeType: 'image/webp',
+          sha256: 'stickerhash',
+          caption: undefined,
+          filename: undefined,
+        },
+      },
+    ])(
+      '$label message',
+      ({ waType, mediaKey, expectedType, mediaPayload, expectedMedia }) => {
+        let payload: WhatsAppN8nWebhookItemDto;
+
+        beforeEach(() => {
+          payload = {
+            ...waTextPayload,
+            messages: [
+              {
+                from: '584147083834',
+                id: `wamid.${waType}001`,
+                timestamp: '1770928719',
+                type: waType,
+                [mediaKey]: mediaPayload,
+              },
+            ],
+          };
+        });
+
+        it(`should map type to ${expectedType}`, async () => {
+          await service.processWhatsAppWebhook(TENANT_ID, payload);
+
+          expect(messageModel.create).toHaveBeenCalledWith(
+            expect.objectContaining({ messageType: expectedType }),
+          );
+        });
+
+        it('should persist media with correct fields', async () => {
+          await service.processWhatsAppWebhook(TENANT_ID, payload);
+
+          expect(messageModel.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+              media: expect.objectContaining(
+                Object.fromEntries(
+                  Object.entries(expectedMedia).filter(
+                    ([, v]) => v !== undefined,
+                  ),
+                ),
+              ),
+            }),
+          );
+        });
+
+        it('should have no body text', async () => {
+          await service.processWhatsAppWebhook(TENANT_ID, payload);
+
+          const call = messageModel.create.mock.calls[0][0];
+          expect(call.body).toBeUndefined();
+        });
+      },
+    );
+  });
 });

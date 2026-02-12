@@ -8,17 +8,31 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { SocketEvent } from './enums/socket-events.enum';
-import { Logger, UseGuards } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { MessageEvent } from './enums/message-events.enum';
 import { SocketAuthGuard } from 'src/auth/guards/socket-auth.guard';
-import { ConfigService } from '@nestjs/config';
 import { TenantsService } from '../tenants/tenants.service';
 
-// TODO: when production config origin
+// Build allowed origins list: exact origins + subdomain RegExp for each
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+const corsOrigins = allowedOrigins.flatMap((origin) => {
+  const { hostname, port, protocol } = new URL(origin);
+  return [
+    origin,
+    new RegExp(
+      `^${protocol}//[^.]+\\.${hostname.replace('.', '\\.')}${port ? `:${port}` : ''}$`,
+    ),
+  ];
+});
+
 @WebSocketGateway({
   path: '/socket',
   cors: {
-    origin: process.env.FRONTEND_URL,
+    origin: corsOrigins,
     credentials: true,
   },
 })

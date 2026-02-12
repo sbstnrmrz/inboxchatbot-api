@@ -17,10 +17,17 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
   .map((o) => o.trim())
   .filter(Boolean);
 
+// Build trusted origins list: include exact origins + subdomain wildcards
+const trustedOrigins = allowedOrigins.flatMap((origin) => {
+  const { hostname, port, protocol } = new URL(origin);
+  const portSuffix = port ? `:${port}` : '';
+  return [origin, `${protocol}//*.${hostname}${portSuffix}`];
+});
+
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL,
   basePath: '/auth',
-  trustedOrigins: allowedOrigins,
+  trustedOrigins,
   advanced: {
     useSecureCookies: isProduction,
     crossSubDomainCookies: {

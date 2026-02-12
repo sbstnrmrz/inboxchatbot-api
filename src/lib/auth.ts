@@ -12,10 +12,15 @@ client.connect().then(() => {
   client.db().collection('user').createIndex({ tenantId: 1 });
 });
 
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL,
   basePath: '/auth',
-  trustedOrigins: ['http://localtest.me:5173'],
+  trustedOrigins: allowedOrigins,
   advanced: {
     useSecureCookies: isProduction,
     crossSubDomainCookies: {

@@ -30,6 +30,7 @@ import { ChatGateway } from '../chat/chat.gateway.js';
 import { MessageEvent } from '../chat/enums/message-events.enum.js';
 import { TenantsService } from '../tenants/tenants.service.js';
 import { BotResponseDto } from './dto/bot-response.dto.js';
+import { FilesService } from '../files/files.service.js';
 
 @Injectable()
 export class MessagesService {
@@ -46,6 +47,7 @@ export class MessagesService {
     private readonly tenantModel: Model<TenantDocument>,
     private readonly chatGateway: ChatGateway,
     private readonly tenantsService: TenantsService,
+    private readonly filesService: FilesService,
   ) {}
 
   async processWhatsAppWebhook(
@@ -61,6 +63,12 @@ export class MessagesService {
 
     const tenantObjectId = new Types.ObjectId(tenantId);
     const savedMessages: MessageDocument[] = [];
+
+    // Load tenant once to get the WhatsApp access token for media downloads
+    const tenant = await this.tenantModel
+      .findById(tenantObjectId)
+      .lean()
+      .exec();
 
     for (const waMessage of messages) {
       const contact = contacts?.find((c) => c.wa_id === waMessage.from);
@@ -171,6 +179,24 @@ export class MessagesService {
       });
 
       savedMessages.push(message);
+
+      // ── Fire-and-forget media download ─────────────────────────────────
+      // Kicked off asynchronously so it never blocks the webhook response.
+      if (media?.whatsappMediaId && tenant?.whatsappInfo?.accessToken) {
+        const mediaTypeSlug = waMessage.type; // e.g. "image", "video", "audio"
+        this.filesService
+          .downloadWhatsAppMedia(
+            tenantId,
+            media.whatsappMediaId,
+            mediaTypeSlug,
+            tenant.whatsappInfo.accessToken,
+          )
+          .catch((err: unknown) => {
+            this.logger.error(
+              `[WA] Failed to download media mediaId=${media.whatsappMediaId}: ${(err as Error).message}`,
+            );
+          });
+      }
     }
 
     return savedMessages;
@@ -284,6 +310,31 @@ export class MessagesService {
         });
 
         savedMessages.push(message);
+
+        // ── Fire-and-forget media download ──────────────────────────────────
+        // Instagram CDN URLs expire, so we download immediately on receipt.
+        if (attachment?.payload?.url) {
+          const mediaTypeSlug = attachment.type; // e.g. "image", "video"
+          const mimeType = this.mimeTypeFromInstagramAttachment(
+            attachment.type,
+          );
+          // Use the message's external ID (mid) as the stable cache key
+          const cacheId = event.message.mid;
+
+          this.filesService
+            .downloadInstagramMedia(
+              tenantId,
+              cacheId,
+              mediaTypeSlug,
+              attachment.payload.url,
+              mimeType,
+            )
+            .catch((err: unknown) => {
+              this.logger.error(
+                `[IG] Failed to download media mid=${cacheId}: ${(err as Error).message}`,
+              );
+            });
+        }
       }
     }
 
@@ -671,5 +722,23 @@ export class MessagesService {
       return map[attachmentType] ?? MessageType.Unknown;
     }
     return text ? MessageType.Text : MessageType.Unknown;
+  }
+
+  /**
+   * Maps an Instagram attachment type string to its primary MIME type.
+   * Used when storing the file so it receives the correct extension.
+   */
+  private mimeTypeFromInstagramAttachment(attachmentType: string): string {
+    const map: Record<string, string> = {
+      image: 'image/jpeg',
+      audio: 'audio/mpeg',
+      video: 'video/mp4',
+      file: 'application/octet-stream',
+      reel: 'video/mp4',
+      ig_reel: 'video/mp4',
+      share: 'image/jpeg',
+      like_heart: 'image/webp',
+    };
+    return map[attachmentType] ?? 'application/octet-stream';
   }
 }

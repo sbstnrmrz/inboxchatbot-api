@@ -14,6 +14,7 @@ import { ChatModule } from './chat/chat.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { CustomersModule } from './customers/customers.module';
 import { MessagesModule } from './messages/messages.module';
+import { FilesModule } from './files/files.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { MessagesModule } from './messages/messages.module';
     ConversationsModule,
     CustomersModule,
     MessagesModule,
+    FilesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

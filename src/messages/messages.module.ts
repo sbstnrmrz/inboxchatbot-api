@@ -14,11 +14,13 @@ import { MessagesService } from './messages.service.js';
 import { MessagesController } from './messages.controller.js';
 import { ChatModule } from '../chat/chat.module.js';
 import { TenantsModule } from '../tenants/tenants.module.js';
+import { FilesModule } from '../files/files.module.js';
 
 @Module({
   imports: [
     ChatModule,
     TenantsModule,
+    FilesModule,
     MongooseModule.forFeature([
       { name: Message.name, schema: MessageSchema },
       { name: Customer.name, schema: CustomerSchema },

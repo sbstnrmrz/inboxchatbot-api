@@ -11,11 +11,14 @@ import {
 } from '../conversations/schemas/conversation.schema.js';
 import { Tenant, TenantSchema } from '../tenants/schemas/tenant.schema.js';
 import { MessagesService } from './messages.service.js';
+import { MessagesController } from './messages.controller.js';
 import { ChatModule } from '../chat/chat.module.js';
+import { TenantsModule } from '../tenants/tenants.module.js';
 
 @Module({
   imports: [
     ChatModule,
+    TenantsModule,
     MongooseModule.forFeature([
       { name: Message.name, schema: MessageSchema },
       { name: Customer.name, schema: CustomerSchema },
@@ -23,6 +26,7 @@ import { ChatModule } from '../chat/chat.module.js';
       { name: Tenant.name, schema: TenantSchema },
     ]),
   ],
+  controllers: [MessagesController],
   providers: [MessagesService],
   exports: [MessagesService, MongooseModule],
 })

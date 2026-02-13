@@ -20,6 +20,8 @@ import { WhatsAppN8nWebhookItemDto } from './dto/whatsapp/whatsapp-n8n-webhook.d
 import { InstagramWebhookDto } from './dto/instagram/instagram-webhook.dto.js';
 import { Tenant } from '../tenants/schemas/tenant.schema.js';
 import { SendMessageDto } from './dto/send-message.dto.js';
+import { TenantsService } from '../tenants/tenants.service.js';
+import { BotResponseDto } from './dto/bot-response.dto.js';
 
 // Mock ChatGateway to avoid pulling in better-auth ESM dependencies
 const mockChatGateway = { emitToTenant: jest.fn() };
@@ -96,6 +98,7 @@ describe('MessagesService', () => {
   let conversationModel: ReturnType<typeof buildModelMock>;
   let messageModel: ReturnType<typeof buildModelMock>;
   let tenantModel: ReturnType<typeof buildModelMock>;
+  let tenantsService: jest.Mocked<TenantsService>;
 
   beforeEach(async () => {
     customerModel = buildModelMock();
@@ -117,10 +120,15 @@ describe('MessagesService', () => {
           provide: ChatGateway,
           useValue: { emitToTenant: jest.fn() },
         },
+        {
+          provide: TenantsService,
+          useValue: { resolveId: jest.fn() },
+        },
       ],
     }).compile();
 
     service = module.get<MessagesService>(MessagesService);
+    tenantsService = module.get(TenantsService);
   });
 
   // ── Helper: build lean chainable mock ──────────────────────────────────────
@@ -933,6 +941,268 @@ describe('MessagesService', () => {
         await expect(
           service.sendMessage(TENANT_ID, AGENT_ID, textDto),
         ).rejects.toThrow(`Tenant ${TENANT_ID} has no WhatsApp config`);
+      });
+    });
+  });
+
+  // ── processBotResponse ────────────────────────────────────────────────────
+
+  describe('processBotResponse', () => {
+    const WA_ID = '584147083834';
+    const PHONE_NUMBER_ID = '642317185638668';
+    const newMessageId = new Types.ObjectId();
+    const customerId = new Types.ObjectId();
+    const conversationId = new Types.ObjectId();
+
+    const tenant = {
+      _id: new Types.ObjectId(TENANT_ID),
+      whatsappInfo: {
+        accessToken: 'wa-access-token',
+        phoneNumberId: PHONE_NUMBER_ID,
+        businessAccountId: 'biz-001',
+        appSecret: 'secret',
+      },
+    };
+
+    const existingCustomer = {
+      _id: customerId,
+      name: 'Miguel Vivas',
+      whatsappInfo: { id: WA_ID, name: 'Miguel Vivas' },
+    };
+
+    const existingConversation = {
+      _id: conversationId,
+      tenantId: new Types.ObjectId(TENANT_ID),
+      customerId,
+      channel: ConversationChannel.WhatsApp,
+      status: ConversationStatus.Open,
+    };
+
+    const textDto: BotResponseDto = {
+      phoneNumberId: PHONE_NUMBER_ID,
+      tenantId: TENANT_ID,
+      content: 'Hola, soy el bot',
+      messageType: MessageType.Text,
+      metaResponse: {
+        messaging_product: 'whatsapp',
+        contacts: [{ input: WA_ID, wa_id: WA_ID }],
+        messages: [{ id: 'wamid.bot001' }],
+      },
+    };
+
+    // ── happy path: customer and conversation already exist ────────────────
+
+    describe('existing customer and conversation', () => {
+      beforeEach(() => {
+        tenantsService.resolveId.mockResolvedValue(TENANT_ID);
+        tenantModel.findById = jest.fn().mockReturnValue(leanExec(tenant));
+        customerModel.findOne.mockReturnValue(leanExec(existingCustomer));
+        conversationModel.findOne.mockReturnValue(
+          leanExec(existingConversation),
+        );
+        messageModel.create.mockResolvedValue({
+          _id: newMessageId,
+          channel: MessageChannel.WhatsApp,
+          direction: MessageDirection.Outbound,
+          messageType: MessageType.Text,
+          body: 'Hola, soy el bot',
+          externalId: 'wamid.bot001',
+          status: MessageStatus.Sent,
+          sender: { type: SenderType.Bot },
+        });
+      });
+
+      it('should resolve tenantId via TenantsService', async () => {
+        await service.processBotResponse(textDto);
+
+        expect(tenantsService.resolveId).toHaveBeenCalledWith(TENANT_ID);
+      });
+
+      it('should persist the message as OUTBOUND with sender type BOT', async () => {
+        await service.processBotResponse(textDto);
+
+        expect(messageModel.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            tenantId: new Types.ObjectId(TENANT_ID),
+            conversationId,
+            channel: MessageChannel.WhatsApp,
+            direction: MessageDirection.Outbound,
+            messageType: MessageType.Text,
+            body: 'Hola, soy el bot',
+            externalId: 'wamid.bot001',
+            status: MessageStatus.Sent,
+            sender: { type: SenderType.Bot },
+          }),
+        );
+      });
+
+      it('should not include an id in the sender (BOT has no user reference)', async () => {
+        await service.processBotResponse(textDto);
+
+        const call = messageModel.create.mock.calls[0][0];
+        expect(call.sender.id).toBeUndefined();
+      });
+
+      it('should update lastMessage on the conversation', async () => {
+        await service.processBotResponse(textDto);
+
+        expect(conversationModel.findByIdAndUpdate).toHaveBeenCalledWith(
+          conversationId,
+          expect.objectContaining({ lastMessage: newMessageId }),
+        );
+      });
+
+      it('should return the saved message', async () => {
+        const result = await service.processBotResponse(textDto);
+
+        expect(result._id).toEqual(newMessageId);
+      });
+
+      it('should emit a real-time socket event to the tenant room', async () => {
+        const chatGateway = service['chatGateway'] as unknown as {
+          emitToTenant: jest.Mock;
+        };
+
+        await service.processBotResponse(textDto);
+
+        expect(chatGateway.emitToTenant).toHaveBeenCalledWith(
+          TENANT_ID,
+          'message_sent',
+          expect.objectContaining({ _id: newMessageId }),
+        );
+      });
+    });
+
+    // ── customer not found: should create a new one ────────────────────────
+
+    describe('customer does not exist yet', () => {
+      const newCustomer = {
+        _id: customerId,
+        name: WA_ID,
+        whatsappInfo: { id: WA_ID, name: WA_ID },
+      };
+
+      beforeEach(() => {
+        tenantsService.resolveId.mockResolvedValue(TENANT_ID);
+        tenantModel.findById = jest.fn().mockReturnValue(leanExec(tenant));
+        // First call: customer not found; second call (conversation lookup): not needed
+        customerModel.findOne.mockReturnValue(leanExec(null));
+        customerModel.create.mockResolvedValue(newCustomer);
+        conversationModel.findOne.mockReturnValue(
+          leanExec(existingConversation),
+        );
+        messageModel.create.mockResolvedValue({ _id: newMessageId });
+      });
+
+      it('should create the customer with whatsappInfo from the meta response', async () => {
+        await service.processBotResponse(textDto);
+
+        expect(customerModel.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            tenantId: new Types.ObjectId(TENANT_ID),
+            whatsappInfo: { id: WA_ID, name: WA_ID },
+          }),
+        );
+      });
+    });
+
+    // ── conversation not found: should create a new one ────────────────────
+
+    describe('active conversation does not exist yet', () => {
+      const newConversation = {
+        _id: conversationId,
+        tenantId: new Types.ObjectId(TENANT_ID),
+        customerId,
+        channel: ConversationChannel.WhatsApp,
+        status: ConversationStatus.Open,
+      };
+
+      beforeEach(() => {
+        tenantsService.resolveId.mockResolvedValue(TENANT_ID);
+        tenantModel.findById = jest.fn().mockReturnValue(leanExec(tenant));
+        customerModel.findOne.mockReturnValue(leanExec(existingCustomer));
+        conversationModel.findOne.mockReturnValue(leanExec(null));
+        conversationModel.create.mockResolvedValue(newConversation);
+        messageModel.create.mockResolvedValue({ _id: newMessageId });
+      });
+
+      it('should create a new WhatsApp conversation with status OPEN', async () => {
+        await service.processBotResponse(textDto);
+
+        expect(conversationModel.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            tenantId: new Types.ObjectId(TENANT_ID),
+            customerId,
+            channel: ConversationChannel.WhatsApp,
+            status: ConversationStatus.Open,
+          }),
+        );
+      });
+    });
+
+    // ── tenantId given as slug ─────────────────────────────────────────────
+
+    describe('tenantId provided as slug', () => {
+      const slugDto: BotResponseDto = { ...textDto, tenantId: 'my-tenant' };
+
+      beforeEach(() => {
+        tenantsService.resolveId.mockResolvedValue(TENANT_ID);
+        tenantModel.findById = jest.fn().mockReturnValue(leanExec(tenant));
+        customerModel.findOne.mockReturnValue(leanExec(existingCustomer));
+        conversationModel.findOne.mockReturnValue(
+          leanExec(existingConversation),
+        );
+        messageModel.create.mockResolvedValue({ _id: newMessageId });
+      });
+
+      it('should call TenantsService.resolveId with the slug', async () => {
+        await service.processBotResponse(slugDto);
+
+        expect(tenantsService.resolveId).toHaveBeenCalledWith('my-tenant');
+      });
+    });
+
+    // ── error cases ────────────────────────────────────────────────────────
+
+    describe('error cases', () => {
+      it('should throw if tenant is not found', async () => {
+        tenantsService.resolveId.mockResolvedValue(TENANT_ID);
+        tenantModel.findById = jest.fn().mockReturnValue(leanExec(null));
+
+        await expect(service.processBotResponse(textDto)).rejects.toThrow(
+          `Tenant ${TENANT_ID} not found`,
+        );
+      });
+
+      it('should throw if phoneNumberId does not match tenant config', async () => {
+        tenantsService.resolveId.mockResolvedValue(TENANT_ID);
+        tenantModel.findById = jest.fn().mockReturnValue(
+          leanExec({
+            ...tenant,
+            whatsappInfo: { ...tenant.whatsappInfo, phoneNumberId: 'other-id' },
+          }),
+        );
+
+        await expect(service.processBotResponse(textDto)).rejects.toThrow(
+          `phoneNumberId ${PHONE_NUMBER_ID} does not match tenant config`,
+        );
+      });
+
+      it('should throw if metaResponse has no contacts', async () => {
+        tenantsService.resolveId.mockResolvedValue(TENANT_ID);
+        tenantModel.findById = jest.fn().mockReturnValue(leanExec(tenant));
+
+        const dtoWithoutContacts: BotResponseDto = {
+          ...textDto,
+          metaResponse: {
+            ...textDto.metaResponse,
+            contacts: [],
+          },
+        };
+
+        await expect(
+          service.processBotResponse(dtoWithoutContacts),
+        ).rejects.toThrow('metaResponse.contacts is empty');
       });
     });
   });

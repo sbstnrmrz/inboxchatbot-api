@@ -27,6 +27,8 @@ import { SendMessageDto } from './dto/send-message.dto.js';
 import { WhatsAppSendMessageResponseDto } from './dto/whatsapp/whatsapp-send-message-response.dto.js';
 import { ChatGateway } from '../chat/chat.gateway.js';
 import { MessageEvent } from '../chat/enums/message-events.enum.js';
+import { TenantsService } from '../tenants/tenants.service.js';
+import { BotResponseDto } from './dto/bot-response.dto.js';
 
 @Injectable()
 export class MessagesService {
@@ -42,6 +44,7 @@ export class MessagesService {
     @InjectModel(Tenant.name)
     private readonly tenantModel: Model<TenantDocument>,
     private readonly chatGateway: ChatGateway,
+    private readonly tenantsService: TenantsService,
   ) {}
 
   async processWhatsAppWebhook(
@@ -477,6 +480,114 @@ export class MessagesService {
     }
 
     return response.json() as Promise<{ message_id: string }>;
+  }
+
+  async processBotResponse(dto: BotResponseDto): Promise<MessageDocument> {
+    // ── 1. Resolve tenantId (accepts slug or ObjectId) ────────────────────
+    const resolvedTenantId = await this.tenantsService.resolveId(dto.tenantId);
+    const tenantObjectId = new Types.ObjectId(resolvedTenantId);
+
+    // ── 2. Validate phoneNumberId belongs to this tenant ──────────────────
+    const tenant = await this.tenantModel
+      .findById(tenantObjectId)
+      .lean()
+      .exec();
+
+    if (!tenant) {
+      throw new Error(`Tenant ${dto.tenantId} not found`);
+    }
+
+    if (tenant.whatsappInfo?.phoneNumberId !== dto.phoneNumberId) {
+      throw new Error(
+        `phoneNumberId ${dto.phoneNumberId} does not match tenant config`,
+      );
+    }
+
+    // ── 3. Extract recipient wa_id from Meta response ─────────────────────
+    const recipientWaId = dto.metaResponse.contacts?.[0]?.wa_id;
+    if (!recipientWaId) {
+      throw new Error(
+        'metaResponse.contacts is empty — cannot identify recipient',
+      );
+    }
+
+    // ── 4. Find or create customer ────────────────────────────────────────
+    let customer = await this.customerModel
+      .findOne({
+        tenantId: tenantObjectId,
+        'whatsappInfo.id': recipientWaId,
+      })
+      .lean()
+      .exec();
+
+    if (!customer) {
+      this.logger.log(
+        `Customer not found for wa_id=${recipientWaId}, creating new customer`,
+      );
+      customer = await this.customerModel.create({
+        tenantId: tenantObjectId,
+        name: recipientWaId,
+        whatsappInfo: { id: recipientWaId, name: recipientWaId },
+      });
+    }
+
+    const customerObjectId = (customer as any)._id as Types.ObjectId;
+
+    // ── 5. Find or create active WhatsApp conversation ────────────────────
+    let conversation = await this.conversationModel
+      .findOne({
+        tenantId: tenantObjectId,
+        customerId: customerObjectId,
+        channel: ConversationChannel.WhatsApp,
+        status: { $in: [ConversationStatus.Open, ConversationStatus.Pending] },
+      })
+      .lean()
+      .exec();
+
+    if (!conversation) {
+      this.logger.log(
+        `No active WhatsApp conversation for customerId=${customerObjectId}, creating`,
+      );
+      conversation = await this.conversationModel.create({
+        tenantId: tenantObjectId,
+        customerId: customerObjectId,
+        channel: ConversationChannel.WhatsApp,
+        status: ConversationStatus.Open,
+      });
+    }
+
+    const conversationObjectId = (conversation as any)._id as Types.ObjectId;
+
+    // ── 6. Extract wamid from Meta response ───────────────────────────────
+    const externalId = dto.metaResponse.messages?.[0]?.id;
+
+    const sentAt = new Date();
+
+    // ── 7. Persist message ────────────────────────────────────────────────
+    const message = await this.messageModel.create({
+      tenantId: tenantObjectId,
+      conversationId: conversationObjectId,
+      channel: MessageChannel.WhatsApp,
+      direction: MessageDirection.Outbound,
+      messageType: dto.messageType,
+      sender: { type: SenderType.Bot },
+      body: dto.content,
+      media: dto.media,
+      externalId,
+      status: MessageStatus.Sent,
+      sentAt,
+    });
+
+    // ── 8. Update conversation lastMessage ────────────────────────────────
+    await this.conversationModel.findByIdAndUpdate(conversationObjectId, {
+      lastMessage: message._id,
+      lastMessageAt: sentAt,
+    });
+
+    // ── 9. Emit real-time event ───────────────────────────────────────────
+    this.chatGateway.emitToTenant(resolvedTenantId, MessageEvent.Sent, message);
+
+    return message;
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────

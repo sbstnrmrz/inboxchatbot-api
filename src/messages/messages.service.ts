@@ -22,6 +22,7 @@ import {
 } from '../conversations/schemas/conversation.schema.js';
 import { WhatsAppN8nWebhookItemDto } from './dto/whatsapp/whatsapp-n8n-webhook.dto.js';
 import { InstagramWebhookDto } from './dto/instagram/instagram-webhook.dto.js';
+import type { MessageReceivedDto } from './dto/message-received.dto.js';
 import { Tenant, TenantDocument } from '../tenants/schemas/tenant.schema.js';
 import { SendMessageDto } from './dto/send-message.dto.js';
 import { WhatsAppSendMessageResponseDto } from './dto/whatsapp/whatsapp-send-message-response.dto.js';
@@ -588,6 +589,43 @@ export class MessagesService {
     this.chatGateway.emitToTenant(resolvedTenantId, MessageEvent.Sent, message);
 
     return message;
+  }
+
+  /**
+   * Unified entry point called by the n8n workflow.
+   * Detects the channel from the payload and delegates to the appropriate
+   * processor:
+   *   - WhatsApp : payload.messaging_product === 'whatsapp'
+   *   - Instagram: payload.object === 'instagram'
+   */
+  async messageReceived(
+    tenantId: string,
+    payload: MessageReceivedDto,
+  ): Promise<MessageDocument[]> {
+    const resolvedTenantId = await this.tenantsService.resolveId(tenantId);
+
+    if (
+      (payload as WhatsAppN8nWebhookItemDto).messaging_product === 'whatsapp'
+    ) {
+      this.logger.log(`[messageReceived] Channel detected: WhatsApp`);
+      return this.processWhatsAppWebhook(
+        resolvedTenantId,
+        payload as WhatsAppN8nWebhookItemDto,
+      );
+    }
+
+    if ((payload as InstagramWebhookDto).object === 'instagram') {
+      this.logger.log(`[messageReceived] Channel detected: Instagram`);
+      return this.processInstagramWebhook(
+        resolvedTenantId,
+        payload as InstagramWebhookDto,
+      );
+    }
+
+    this.logger.warn(
+      `[messageReceived] Unknown channel payload — skipping. payload keys: ${Object.keys(payload).join(', ')}`,
+    );
+    return [];
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────

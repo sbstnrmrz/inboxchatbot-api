@@ -1,5 +1,6 @@
 import {
   ConnectedSocket,
+  MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
   SubscribeMessage,
@@ -8,11 +9,10 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { SocketEvent } from './enums/socket-events.enum';
-import { Logger } from '@nestjs/common';
+import { Logger, UseGuards } from '@nestjs/common';
 import { MessageEvent } from './enums/message-events.enum';
 import { SocketAuthGuard } from '../auth/guards/socket-auth.guard.js';
 import { TenantsService } from '../tenants/tenants.service.js';
-import { SendMessageDto } from 'src/messages/dto/send-message.dto';
 
 // Build allowed origins list: exact origins + subdomain RegExp for each
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
@@ -52,6 +52,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleConnection(client: Socket) {
     this.logger.debug('Socket client trying to connect');
     try {
+      // this acts like a guard
       const isAuthorized = await this.socketAuthGuard.canActivate({
         switchToWs: () => ({ getClient: () => client }),
       } as any);
@@ -78,10 +79,27 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.debug(`Socket client ${client.id} disconnected`);
   }
 
+  // TODO: change to data to correct type
   @SubscribeMessage(MessageEvent.Sent)
-  handleMessageSent(@ConnectedSocket() client: Socket, data: SendMessageDto): string {
-    
+  @UseGuards(SocketAuthGuard)
+  handleMessageSent(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
+  ): string {
+    const tenantId = client.data.session?.user?.tenantId as string | undefined;
+    this.logger.debug('Received message from tenant ' + tenantId);
+    this.logger.debug(data);
 
+    if (tenantId) {
+      const message = { message: 'Message Received' };
+      this.logger.debug(
+        'Sending ' + JSON.stringify(message) + ' to tenant: ' + tenantId,
+      );
+      this.emitToTenant(tenantId, MessageEvent.Received, message);
+    } else {
+      this.logger.warn(`No tenantId for client ${client.id}, disconnecting`);
+      client.disconnect();
+    }
 
     return 'Hello world!';
   }

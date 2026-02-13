@@ -945,6 +945,139 @@ describe('MessagesService', () => {
     });
   });
 
+  // ── messageReceived ───────────────────────────────────────────────────────
+  //
+  // Tests the unified n8n entry point.
+  // processWhatsAppWebhook / processInstagramWebhook are spied on so we only
+  // verify routing logic — the inner processing is covered by its own suites.
+
+  describe('messageReceived', () => {
+    const newMessageId = new Types.ObjectId();
+
+    beforeEach(() => {
+      tenantsService.resolveId.mockResolvedValue(TENANT_ID);
+    });
+
+    // ── WhatsApp detection ───────────────────────────────────────────────────
+
+    describe('when payload has messaging_product === "whatsapp"', () => {
+      it('should delegate to processWhatsAppWebhook with the resolved tenantId', async () => {
+        const spy = jest
+          .spyOn(service, 'processWhatsAppWebhook')
+          .mockResolvedValue([{ _id: newMessageId } as any]);
+
+        await service.messageReceived(TENANT_ID, waTextPayload);
+
+        expect(tenantsService.resolveId).toHaveBeenCalledWith(TENANT_ID);
+        expect(spy).toHaveBeenCalledWith(TENANT_ID, waTextPayload);
+      });
+
+      it('should NOT call processInstagramWebhook', async () => {
+        jest
+          .spyOn(service, 'processWhatsAppWebhook')
+          .mockResolvedValue([{ _id: newMessageId } as any]);
+        const igSpy = jest.spyOn(service, 'processInstagramWebhook');
+
+        await service.messageReceived(TENANT_ID, waTextPayload);
+
+        expect(igSpy).not.toHaveBeenCalled();
+      });
+
+      it('should return the messages from processWhatsAppWebhook', async () => {
+        const expected = [{ _id: newMessageId }] as any[];
+        jest
+          .spyOn(service, 'processWhatsAppWebhook')
+          .mockResolvedValue(expected);
+
+        const result = await service.messageReceived(TENANT_ID, waTextPayload);
+
+        expect(result).toBe(expected);
+      });
+    });
+
+    // ── Instagram detection ──────────────────────────────────────────────────
+
+    describe('when payload has object === "instagram"', () => {
+      it('should delegate to processInstagramWebhook with the resolved tenantId', async () => {
+        const spy = jest
+          .spyOn(service, 'processInstagramWebhook')
+          .mockResolvedValue([{ _id: newMessageId } as any]);
+
+        await service.messageReceived(TENANT_ID, igTextPayload);
+
+        expect(tenantsService.resolveId).toHaveBeenCalledWith(TENANT_ID);
+        expect(spy).toHaveBeenCalledWith(TENANT_ID, igTextPayload);
+      });
+
+      it('should NOT call processWhatsAppWebhook', async () => {
+        jest
+          .spyOn(service, 'processInstagramWebhook')
+          .mockResolvedValue([{ _id: newMessageId } as any]);
+        const waSpy = jest.spyOn(service, 'processWhatsAppWebhook');
+
+        await service.messageReceived(TENANT_ID, igTextPayload);
+
+        expect(waSpy).not.toHaveBeenCalled();
+      });
+
+      it('should return the messages from processInstagramWebhook', async () => {
+        const expected = [{ _id: newMessageId }] as any[];
+        jest
+          .spyOn(service, 'processInstagramWebhook')
+          .mockResolvedValue(expected);
+
+        const result = await service.messageReceived(TENANT_ID, igTextPayload);
+
+        expect(result).toBe(expected);
+      });
+    });
+
+    // ── Unknown channel ──────────────────────────────────────────────────────
+
+    describe('when payload does not match any known channel', () => {
+      const unknownPayload = { someField: 'someValue' } as any;
+
+      it('should return an empty array', async () => {
+        const result = await service.messageReceived(TENANT_ID, unknownPayload);
+
+        expect(result).toEqual([]);
+      });
+
+      it('should NOT call processWhatsAppWebhook', async () => {
+        const spy = jest.spyOn(service, 'processWhatsAppWebhook');
+
+        await service.messageReceived(TENANT_ID, unknownPayload);
+
+        expect(spy).not.toHaveBeenCalled();
+      });
+
+      it('should NOT call processInstagramWebhook', async () => {
+        const spy = jest.spyOn(service, 'processInstagramWebhook');
+
+        await service.messageReceived(TENANT_ID, unknownPayload);
+
+        expect(spy).not.toHaveBeenCalled();
+      });
+    });
+
+    // ── Tenant resolution ────────────────────────────────────────────────────
+
+    describe('tenant resolution', () => {
+      it('should accept a slug and resolve it to an ObjectId before delegating', async () => {
+        const resolvedId = new Types.ObjectId().toHexString();
+        tenantsService.resolveId.mockResolvedValue(resolvedId);
+        const spy = jest
+          .spyOn(service, 'processWhatsAppWebhook')
+          .mockResolvedValue([]);
+
+        await service.messageReceived('my-tenant-slug', waTextPayload);
+
+        expect(tenantsService.resolveId).toHaveBeenCalledWith('my-tenant-slug');
+        expect(spy).toHaveBeenCalledWith(resolvedId, waTextPayload);
+      });
+    });
+  });
+
   // ── processBotResponse ────────────────────────────────────────────────────
 
   describe('processBotResponse', () => {

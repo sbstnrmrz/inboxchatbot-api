@@ -1,11 +1,13 @@
-import { Injectable, NestMiddleware } from '@nestjs/common';
+import { Injectable, Logger, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { auth } from '../lib/auth';
 import { TenantsService } from './tenants.service';
+import { logger } from 'better-auth';
 
 @Injectable()
 export class TenantsMiddleware implements NestMiddleware {
   constructor(private readonly tenantsService: TenantsService) {}
+  private readonly logger = new Logger(TenantsMiddleware.name);
 
   async use(
     req: Request & { tenantId?: string },

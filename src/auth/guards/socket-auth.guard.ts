@@ -15,8 +15,8 @@ export class SocketAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const client: Socket = context.switchToWs().getClient();
-    this.logger.debug('Socket handshake');
-    this.logger.debug(client.handshake);
+ // this.logger.debug('Socket handshake');
+ // this.logger.debug(client.handshake);
 
     const session = await auth.api.getSession({ headers: client.handshake.headers as any });
 

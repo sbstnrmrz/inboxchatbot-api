@@ -6,5 +6,6 @@ import { TenantsModule } from '../tenants/tenants.module';
 @Module({
   imports: [TenantsModule],
   providers: [ChatGateway, SocketAuthGuard],
+  exports: [ChatGateway],
 })
 export class ChatModule {}

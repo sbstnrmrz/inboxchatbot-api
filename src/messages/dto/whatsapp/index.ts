@@ -30,3 +30,8 @@ export {
   WhatsAppN8nWebhookDto,
   WhatsAppN8nWebhookItemDto,
 } from './whatsapp-n8n-webhook.dto.js';
+export {
+  WhatsAppSendMessageResponseDto,
+  WhatsAppSendMessageResponseContactDto,
+  WhatsAppSendMessageResponseMessageDto,
+} from './whatsapp-send-message-response.dto.js';

@@ -10,8 +10,9 @@ import { Server, Socket } from 'socket.io';
 import { SocketEvent } from './enums/socket-events.enum';
 import { Logger } from '@nestjs/common';
 import { MessageEvent } from './enums/message-events.enum';
-import { SocketAuthGuard } from 'src/auth/guards/socket-auth.guard';
-import { TenantsService } from '../tenants/tenants.service';
+import { SocketAuthGuard } from '../auth/guards/socket-auth.guard.js';
+import { TenantsService } from '../tenants/tenants.service.js';
+import { SendMessageDto } from 'src/messages/dto/send-message.dto';
 
 // Build allowed origins list: exact origins + subdomain RegExp for each
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
@@ -78,7 +79,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage(MessageEvent.Sent)
-  handleMessageSent(@ConnectedSocket() client: Socket, payload: any): string {
+  handleMessageSent(@ConnectedSocket() client: Socket, data: SendMessageDto): string {
+    
+
+
     return 'Hello world!';
+  }
+
+  /**
+   * Emits an event to all clients in the tenant's room.
+   * Used by services (e.g. MessagesService) to push real-time updates.
+   */
+  emitToTenant(tenantId: string, event: MessageEvent, data: unknown): void {
+    this.server.to(tenantId).emit(event, data);
   }
 }

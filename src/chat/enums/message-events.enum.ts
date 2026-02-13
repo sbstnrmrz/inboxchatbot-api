@@ -1,4 +1,4 @@
 export enum MessageEvent {
-  Sent = "message_sent",
-  Received = 'meesage_received',
+  Sent = 'message_sent',
+  Received = 'message_received',
 }

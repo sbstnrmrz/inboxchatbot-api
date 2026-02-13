@@ -18,6 +18,15 @@ import {
 } from '../conversations/schemas/conversation.schema.js';
 import { WhatsAppN8nWebhookItemDto } from './dto/whatsapp/whatsapp-n8n-webhook.dto.js';
 import { InstagramWebhookDto } from './dto/instagram/instagram-webhook.dto.js';
+import { Tenant } from '../tenants/schemas/tenant.schema.js';
+import { SendMessageDto } from './dto/send-message.dto.js';
+
+// Mock ChatGateway to avoid pulling in better-auth ESM dependencies
+const mockChatGateway = { emitToTenant: jest.fn() };
+jest.mock('../chat/chat.gateway.js', () => ({
+  ChatGateway: jest.fn().mockImplementation(() => mockChatGateway),
+}));
+import { ChatGateway } from '../chat/chat.gateway.js';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -72,6 +81,7 @@ const waTextPayload: WhatsAppN8nWebhookItemDto = {
 function buildModelMock(overrides: Record<string, jest.Mock> = {}) {
   return {
     findOne: jest.fn(),
+    findById: jest.fn(),
     create: jest.fn(),
     findByIdAndUpdate: jest.fn().mockResolvedValue(null),
     ...overrides,
@@ -85,11 +95,13 @@ describe('MessagesService', () => {
   let customerModel: ReturnType<typeof buildModelMock>;
   let conversationModel: ReturnType<typeof buildModelMock>;
   let messageModel: ReturnType<typeof buildModelMock>;
+  let tenantModel: ReturnType<typeof buildModelMock>;
 
   beforeEach(async () => {
     customerModel = buildModelMock();
     conversationModel = buildModelMock();
     messageModel = buildModelMock();
+    tenantModel = buildModelMock();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -100,6 +112,11 @@ describe('MessagesService', () => {
           useValue: conversationModel,
         },
         { provide: getModelToken(Message.name), useValue: messageModel },
+        { provide: getModelToken(Tenant.name), useValue: tenantModel },
+        {
+          provide: ChatGateway,
+          useValue: { emitToTenant: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -699,5 +716,224 @@ describe('MessagesService', () => {
         });
       },
     );
+  });
+
+  // ── sendMessage ───────────────────────────────────────────────────────────
+
+  describe('sendMessage', () => {
+    const AGENT_ID = new Types.ObjectId().toHexString();
+    const conversationId = new Types.ObjectId();
+    const customerId = new Types.ObjectId();
+    const newMessageId = new Types.ObjectId();
+
+    const waConversation = {
+      _id: conversationId,
+      tenantId: new Types.ObjectId(TENANT_ID),
+      customerId,
+      channel: ConversationChannel.WhatsApp,
+      status: ConversationStatus.Open,
+    };
+
+    const igConversation = {
+      _id: conversationId,
+      tenantId: new Types.ObjectId(TENANT_ID),
+      customerId,
+      channel: ConversationChannel.Instagram,
+      status: ConversationStatus.Open,
+    };
+
+    const waCustomer = {
+      _id: customerId,
+      name: 'Miguel Vivas',
+      whatsappInfo: { id: '584147083834', name: 'Miguel Vivas' },
+    };
+
+    const igCustomer = {
+      _id: customerId,
+      name: 'ig-scoped-id-001',
+      instagramInfo: { accountId: 'ig-scoped-id-001' },
+    };
+
+    const tenant = {
+      _id: new Types.ObjectId(TENANT_ID),
+      whatsappInfo: {
+        accessToken: 'wa-access-token',
+        phoneNumberId: '642317185638668',
+        businessAccountId: 'biz-001',
+        appSecret: 'secret',
+      },
+      instagramInfo: {
+        accessToken: 'ig-access-token',
+        accountId: '123456789',
+        pageId: 'page-001',
+        appSecret: 'secret',
+      },
+    };
+
+    const textDto: SendMessageDto = {
+      conversationId: conversationId.toHexString(),
+      messageType: MessageType.Text,
+      body: 'Hola cliente',
+    };
+
+    // ── WhatsApp outbound ──────────────────────────────────────────────────
+
+    describe('WhatsApp outbound text message', () => {
+      beforeEach(() => {
+        conversationModel.findOne.mockReturnValue(leanExec(waConversation));
+        tenantModel.findById = jest.fn().mockReturnValue(leanExec(tenant));
+        customerModel.findOne.mockReturnValue(leanExec(waCustomer));
+        messageModel.create.mockResolvedValue({
+          _id: newMessageId,
+          channel: MessageChannel.WhatsApp,
+          direction: MessageDirection.Outbound,
+          messageType: MessageType.Text,
+          body: 'Hola cliente',
+          status: MessageStatus.Sent,
+        });
+
+        // Mock the WA API caller — returns hardcoded response per WA Cloud API docs
+        jest.spyOn(service, 'callWhatsAppApi').mockResolvedValue({
+          messaging_product: 'whatsapp',
+          contacts: [{ input: '584147083834', wa_id: '584147083834' }],
+          messages: [{ id: 'wamid.outbound001' }],
+        });
+      });
+
+      it('should call the WhatsApp API with correct params', async () => {
+        await service.sendMessage(TENANT_ID, AGENT_ID, textDto);
+
+        expect(service.callWhatsAppApi).toHaveBeenCalledWith(
+          tenant.whatsappInfo.phoneNumberId,
+          tenant.whatsappInfo.accessToken,
+          waCustomer.whatsappInfo.id,
+          textDto,
+        );
+      });
+
+      it('should persist the message as OUTBOUND with wamid as externalId', async () => {
+        await service.sendMessage(TENANT_ID, AGENT_ID, textDto);
+
+        expect(messageModel.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            channel: MessageChannel.WhatsApp,
+            direction: MessageDirection.Outbound,
+            messageType: MessageType.Text,
+            body: 'Hola cliente',
+            externalId: 'wamid.outbound001',
+            status: MessageStatus.Sent,
+            sender: {
+              type: SenderType.User,
+              id: new Types.ObjectId(AGENT_ID),
+            },
+          }),
+        );
+      });
+
+      it('should update lastMessage on the conversation', async () => {
+        await service.sendMessage(TENANT_ID, AGENT_ID, textDto);
+
+        expect(conversationModel.findByIdAndUpdate).toHaveBeenCalledWith(
+          conversationId,
+          expect.objectContaining({ lastMessage: newMessageId }),
+        );
+      });
+
+      it('should return the saved message', async () => {
+        const result = await service.sendMessage(TENANT_ID, AGENT_ID, textDto);
+
+        expect(result._id).toEqual(newMessageId);
+      });
+    });
+
+    // ── Instagram outbound ─────────────────────────────────────────────────
+
+    describe('Instagram outbound text message', () => {
+      beforeEach(() => {
+        conversationModel.findOne.mockReturnValue(leanExec(igConversation));
+        tenantModel.findById = jest.fn().mockReturnValue(leanExec(tenant));
+        customerModel.findOne.mockReturnValue(leanExec(igCustomer));
+        messageModel.create.mockResolvedValue({
+          _id: newMessageId,
+          channel: MessageChannel.Instagram,
+          direction: MessageDirection.Outbound,
+          messageType: MessageType.Text,
+          body: 'Hola cliente',
+          status: MessageStatus.Sent,
+        });
+
+        // Mock the IG API caller — returns hardcoded response per Instagram docs
+        jest.spyOn(service, 'callInstagramApi').mockResolvedValue({
+          message_id: 'mid.outbound001',
+        });
+      });
+
+      it('should call the Instagram API with correct params', async () => {
+        await service.sendMessage(TENANT_ID, AGENT_ID, textDto);
+
+        expect(service.callInstagramApi).toHaveBeenCalledWith(
+          tenant.instagramInfo.accountId,
+          tenant.instagramInfo.accessToken,
+          igCustomer.instagramInfo.accountId,
+          textDto,
+        );
+      });
+
+      it('should persist the message as OUTBOUND with mid as externalId', async () => {
+        await service.sendMessage(TENANT_ID, AGENT_ID, textDto);
+
+        expect(messageModel.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            channel: MessageChannel.Instagram,
+            direction: MessageDirection.Outbound,
+            externalId: 'mid.outbound001',
+            status: MessageStatus.Sent,
+            sender: {
+              type: SenderType.User,
+              id: new Types.ObjectId(AGENT_ID),
+            },
+          }),
+        );
+      });
+
+      it('should return the saved message', async () => {
+        const result = await service.sendMessage(TENANT_ID, AGENT_ID, textDto);
+
+        expect(result._id).toEqual(newMessageId);
+      });
+    });
+
+    // ── Error cases ────────────────────────────────────────────────────────
+
+    describe('error cases', () => {
+      it('should throw if conversation is not found', async () => {
+        conversationModel.findOne.mockReturnValue(leanExec(null));
+
+        await expect(
+          service.sendMessage(TENANT_ID, AGENT_ID, textDto),
+        ).rejects.toThrow(`Conversation ${textDto.conversationId} not found`);
+      });
+
+      it('should throw if tenant is not found', async () => {
+        conversationModel.findOne.mockReturnValue(leanExec(waConversation));
+        tenantModel.findById = jest.fn().mockReturnValue(leanExec(null));
+
+        await expect(
+          service.sendMessage(TENANT_ID, AGENT_ID, textDto),
+        ).rejects.toThrow(`Tenant ${TENANT_ID} not found`);
+      });
+
+      it('should throw if tenant has no WhatsApp config', async () => {
+        conversationModel.findOne.mockReturnValue(leanExec(waConversation));
+        tenantModel.findById = jest
+          .fn()
+          .mockReturnValue(leanExec({ ...tenant, whatsappInfo: undefined }));
+        customerModel.findOne.mockReturnValue(leanExec(waCustomer));
+
+        await expect(
+          service.sendMessage(TENANT_ID, AGENT_ID, textDto),
+        ).rejects.toThrow(`Tenant ${TENANT_ID} has no WhatsApp config`);
+      });
+    });
   });
 });

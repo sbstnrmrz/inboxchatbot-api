@@ -22,7 +22,11 @@ import {
 } from '../conversations/schemas/conversation.schema.js';
 import { WhatsAppN8nWebhookItemDto } from './dto/whatsapp/whatsapp-n8n-webhook.dto.js';
 import { InstagramWebhookDto } from './dto/instagram/instagram-webhook.dto.js';
-import { InstagramWebhookEntryDto } from './dto/instagram/instagram-webhook-entry.dto.js';
+import { Tenant, TenantDocument } from '../tenants/schemas/tenant.schema.js';
+import { SendMessageDto } from './dto/send-message.dto.js';
+import { WhatsAppSendMessageResponseDto } from './dto/whatsapp/whatsapp-send-message-response.dto.js';
+import { ChatGateway } from '../chat/chat.gateway.js';
+import { MessageEvent } from '../chat/enums/message-events.enum.js';
 
 @Injectable()
 export class MessagesService {
@@ -35,6 +39,9 @@ export class MessagesService {
     private readonly customerModel: Model<CustomerDocument>,
     @InjectModel(Conversation.name)
     private readonly conversationModel: Model<ConversationDocument>,
+    @InjectModel(Tenant.name)
+    private readonly tenantModel: Model<TenantDocument>,
+    private readonly chatGateway: ChatGateway,
   ) {}
 
   async processWhatsAppWebhook(
@@ -52,11 +59,9 @@ export class MessagesService {
     const savedMessages: MessageDocument[] = [];
 
     for (const waMessage of messages) {
-      // ── 1. Resolve contact name from contacts array ──────────────────────
       const contact = contacts?.find((c) => c.wa_id === waMessage.from);
       const displayName = contact?.profile?.name ?? waMessage.from;
 
-      // ── 2. Find or create customer ───────────────────────────────────────
       let customer = await this.customerModel
         .findOne({
           tenantId: tenantObjectId,
@@ -81,7 +86,6 @@ export class MessagesService {
 
       const customerObjectId = (customer as any)._id as Types.ObjectId;
 
-      // ── 3. Find or create active conversation ────────────────────────────
       let conversation = await this.conversationModel
         .findOne({
           tenantId: tenantObjectId,
@@ -108,10 +112,8 @@ export class MessagesService {
 
       const conversationObjectId = (conversation as any)._id as Types.ObjectId;
 
-      // ── 4. Map message type ───────────────────────────────────────────────
       const messageType = this.mapWhatsAppMessageType(waMessage.type);
 
-      // ── 5. Build media payload if applicable ─────────────────────────────
       const mediaTypes: MessageType[] = [
         MessageType.Image,
         MessageType.Audio,
@@ -139,7 +141,6 @@ export class MessagesService {
             }
           : undefined;
 
-      // ── 6. Persist message ───────────────────────────────────────────────
       const sentAt = new Date(Number(waMessage.timestamp) * 1000);
 
       const message = await this.messageModel.create({
@@ -159,7 +160,6 @@ export class MessagesService {
         sentAt,
       });
 
-      // ── 7. Update conversation lastMessage ───────────────────────────────
       await this.conversationModel.findByIdAndUpdate(conversationObjectId, {
         lastMessage: message._id,
         lastMessageAt: sentAt,
@@ -284,6 +284,199 @@ export class MessagesService {
     }
 
     return savedMessages;
+  }
+
+  async sendMessage(
+    tenantId: string,
+    agentId: string,
+    dto: SendMessageDto,
+  ): Promise<MessageDocument> {
+    const tenantObjectId = new Types.ObjectId(tenantId);
+
+    // ── 1. Load conversation to get channel + customer ────────────────────
+    const conversation = await this.conversationModel
+      .findOne({ _id: dto.conversationId, tenantId: tenantObjectId })
+      .lean()
+      .exec();
+
+    if (!conversation) {
+      throw new Error(`Conversation ${dto.conversationId} not found`);
+    }
+
+    const conversationObjectId = (conversation as any)._id as Types.ObjectId;
+
+    // ── 2. Load tenant to get channel credentials ─────────────────────────
+    const tenant = await this.tenantModel
+      .findById(tenantObjectId)
+      .lean()
+      .exec();
+
+    if (!tenant) {
+      throw new Error(`Tenant ${tenantId} not found`);
+    }
+
+    // ── 3. Load customer to get channel-specific recipient ID ─────────────
+    const customer = await this.customerModel
+      .findOne({ _id: conversation.customerId, tenantId: tenantObjectId })
+      .lean()
+      .exec();
+
+    if (!customer) {
+      throw new Error(
+        `Customer not found for conversation ${dto.conversationId}`,
+      );
+    }
+
+    const sentAt = new Date();
+    let externalId: string | undefined;
+
+    // ── 4. Send via channel API ───────────────────────────────────────────
+    if (conversation.channel === ConversationChannel.WhatsApp) {
+      const waInfo = tenant.whatsappInfo;
+      if (!waInfo) throw new Error(`Tenant ${tenantId} has no WhatsApp config`);
+
+      const recipientId = (customer as any).whatsappInfo?.id;
+      if (!recipientId) throw new Error(`Customer has no WhatsApp ID`);
+
+      const waResponse = await this.callWhatsAppApi(
+        waInfo.phoneNumberId,
+        waInfo.accessToken,
+        recipientId,
+        dto,
+      );
+
+      externalId = waResponse.messages[0]?.id;
+    } else if (conversation.channel === ConversationChannel.Instagram) {
+      const igInfo = tenant.instagramInfo;
+      if (!igInfo)
+        throw new Error(`Tenant ${tenantId} has no Instagram config`);
+
+      const recipientId = (customer as any).instagramInfo?.accountId;
+      if (!recipientId) throw new Error(`Customer has no Instagram ID`);
+
+      const igResponse = await this.callInstagramApi(
+        igInfo.accountId,
+        igInfo.accessToken,
+        recipientId,
+        dto,
+      );
+
+      externalId = igResponse.message_id;
+    }
+
+    // ── 5. Persist message ────────────────────────────────────────────────
+    const message = await this.messageModel.create({
+      tenantId: tenantObjectId,
+      conversationId: conversationObjectId,
+      channel: conversation.channel,
+      direction: MessageDirection.Outbound,
+      messageType: dto.messageType,
+      sender: {
+        type: SenderType.User,
+        id: new Types.ObjectId(agentId),
+      },
+      body: dto.body,
+      media: dto.media,
+      externalId,
+      status: MessageStatus.Sent,
+      sentAt,
+    });
+
+    // ── 6. Update conversation lastMessage ────────────────────────────────
+    await this.conversationModel.findByIdAndUpdate(conversationObjectId, {
+      lastMessage: message._id,
+      lastMessageAt: sentAt,
+    });
+
+    // ── 7. Emit real-time event to all agents in the tenant room ──────────
+    this.chatGateway.emitToTenant(tenantId, MessageEvent.Sent, message);
+
+    return message;
+  }
+
+  // ── Channel API callers (thin wrappers — easy to mock in tests) ──────────
+
+  async callWhatsAppApi(
+    phoneNumberId: string,
+    accessToken: string,
+    recipientId: string,
+    dto: SendMessageDto,
+  ): Promise<WhatsAppSendMessageResponseDto> {
+    const body: Record<string, unknown> = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: recipientId,
+      type: dto.messageType.toLowerCase(),
+    };
+
+    if (dto.messageType === MessageType.Text) {
+      body['text'] = { body: dto.body };
+    } else if (dto.media) {
+      body[dto.messageType.toLowerCase()] = {
+        id: dto.media.whatsappMediaId,
+        link: dto.media.url,
+        caption: dto.media.caption,
+        filename: dto.media.filename,
+      };
+    }
+
+    const response = await fetch(
+      `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`WhatsApp API error: ${response.status}`);
+    }
+
+    return response.json() as Promise<WhatsAppSendMessageResponseDto>;
+  }
+
+  async callInstagramApi(
+    igUserId: string,
+    accessToken: string,
+    recipientId: string,
+    dto: SendMessageDto,
+  ): Promise<{ message_id: string }> {
+    const body: Record<string, unknown> = {
+      recipient: { id: recipientId },
+    };
+
+    if (dto.messageType === MessageType.Text) {
+      body['message'] = { text: dto.body };
+    } else if (dto.media) {
+      body['message'] = {
+        attachment: {
+          type: dto.messageType.toLowerCase(),
+          payload: { url: dto.media.url },
+        },
+      };
+    }
+
+    const response = await fetch(
+      `https://graph.instagram.com/v19.0/${igUserId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`Instagram API error: ${response.status}`);
+    }
+
+    return response.json() as Promise<{ message_id: string }>;
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────

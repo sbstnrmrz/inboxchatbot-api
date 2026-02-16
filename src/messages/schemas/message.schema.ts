@@ -93,6 +93,7 @@ export interface MessageMedia {
   /** Approximate file size in bytes, if known */
   size?: number;
 }
+// maybe add voice field to media
 
 // ─── Referral ─────────────────────────────────────────────────────────────────
 

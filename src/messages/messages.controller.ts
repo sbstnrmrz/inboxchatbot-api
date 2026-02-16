@@ -26,7 +26,7 @@ export class MessagesController {
    * The tenant is identified via the required `Tenant-Id` header (ObjectId
    * or slug).
    *
-   * POST /messages/message-received
+   * POST /messages/receive
    */
   @Post('receive')
   @HttpCode(HttpStatus.OK)

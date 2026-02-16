@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -38,6 +39,14 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      transform: true, // convierte query strings a sus tipos (número, etc.)
+      whitelist: true, // elimina propiedades no decoradas
+      forbidNonWhitelisted: false,
+    }),
+  );
 
   await app.listen(process.env.PORT ?? 3001);
 }

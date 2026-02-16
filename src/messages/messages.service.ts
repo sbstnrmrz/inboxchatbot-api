@@ -31,6 +31,7 @@ import { MessageEvent } from '../chat/enums/message-events.enum.js';
 import { TenantsService } from '../tenants/tenants.service.js';
 import { BotResponseDto } from './dto/bot-response.dto.js';
 import { FilesService } from '../files/files.service.js';
+import { FindMessagesDto } from './dto/find-messages.dto.js';
 
 @Injectable()
 export class MessagesService {
@@ -49,6 +50,42 @@ export class MessagesService {
     private readonly tenantsService: TenantsService,
     private readonly filesService: FilesService,
   ) {}
+
+  /**
+   * Returns a page of messages for a conversation, ordered newest-first.
+   *
+   * Uses cursor-based (keyset) pagination on `sentAt`:
+   *   - First page: omit `before`
+   *   - Next pages : pass `before` = sentAt of the oldest message in the previous page
+   *
+   * The caller must supply `tenantId` (resolved from the session by the
+   * controller) so that the query is always tenant-scoped.
+   */
+  async findAll(
+    tenantId: string,
+    dto: FindMessagesDto,
+  ): Promise<MessageDocument[]> {
+    const { conversationId, before, limit = 20 } = dto;
+    const tenantObjectId = new Types.ObjectId(tenantId);
+    const conversationObjectId = new Types.ObjectId(conversationId);
+
+    const filter: Record<string, unknown> = {
+      tenantId: tenantObjectId,
+      conversationId: conversationObjectId,
+    };
+
+    if (before) {
+      filter['sentAt'] = { $lt: new Date(before) };
+    }
+
+    this.logger.debug('Sending all messages');
+    return this.messageModel
+      .find(filter)
+      .sort({ sentAt: -1 })
+      .limit(limit)
+      .lean()
+      .exec() as Promise<MessageDocument[]>;
+  }
 
   async processWhatsAppWebhook(
     tenantId: string,

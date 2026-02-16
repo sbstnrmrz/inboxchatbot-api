@@ -6,12 +6,14 @@ import {
   Conversation,
   ConversationSchema,
 } from './schemas/conversation.schema.js';
+import { MessagesModule } from '../messages/messages.module.js';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: Conversation.name, schema: ConversationSchema },
     ]),
+    MessagesModule,
   ],
   controllers: [ConversationsController],
   providers: [ConversationsService],

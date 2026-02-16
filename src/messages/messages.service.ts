@@ -217,6 +217,9 @@ export class MessagesService {
 
       savedMessages.push(message);
 
+      // ── Emit real-time event to tenant room ────────────────────────────
+      this.chatGateway.emitToTenant(tenantId, MessageEvent.Received, message);
+
       // ── Fire-and-forget media download ─────────────────────────────────
       // Kicked off asynchronously so it never blocks the webhook response.
       if (media?.whatsappMediaId && tenant?.whatsappInfo?.accessToken) {
@@ -347,6 +350,9 @@ export class MessagesService {
         });
 
         savedMessages.push(message);
+
+        // ── Emit real-time event to tenant room ──────────────────────────────
+        this.chatGateway.emitToTenant(tenantId, MessageEvent.Received, message);
 
         // ── Fire-and-forget media download ──────────────────────────────────
         // Instagram CDN URLs expire, so we download immediately on receipt.

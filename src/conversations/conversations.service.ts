@@ -47,6 +47,7 @@ export class ConversationsService {
       .find(filter)
       .sort({ lastMessageAt: -1 })
       .limit(limit)
+      .populate('lastMessage')
       .lean()
       .exec() as Promise<ConversationDocument[]>;
   }

@@ -32,7 +32,7 @@ export class BotResponseMetaResponseDto {
  * Payload sent by the bot to register an outbound message it already delivered
  * via the Meta API.
  *
- * - phoneNumberId  → used to look up the tenant (via whatsappInfo.phoneNumberId)
+ * - recipientId    → WhatsApp phone number (wa_id) of the customer the message was sent to
  * - tenantId       → slug or MongoDB ObjectId — resolved to a canonical ID
  * - content        → text body of the message (optional for media-only messages)
  * - messageType    → one of the internal MessageType enum values
@@ -40,10 +40,10 @@ export class BotResponseMetaResponseDto {
  * - media          → present when messageType is IMAGE, AUDIO, VIDEO, DOCUMENT, etc.
  */
 export class BotResponseDto {
-  /** WhatsApp phone number ID used by the bot to send the message */
+  /** WhatsApp phone number (wa_id) of the customer the message was sent to */
   @IsString()
   @IsNotEmpty()
-  phoneNumberId: string;
+  recipientId: string;
 
   /** Tenant identifier — accepts either the MongoDB ObjectId or the slug */
   @IsString()
@@ -55,9 +55,10 @@ export class BotResponseDto {
   @IsString()
   content?: string;
 
-  /** Internal message type */
+  /** Internal message type — defaults to TEXT when omitted */
+  @IsOptional()
   @IsEnum(MessageType)
-  messageType: MessageType;
+  messageType?: MessageType;
 
   /** Verbatim response object returned by the Meta API */
   @IsObject()

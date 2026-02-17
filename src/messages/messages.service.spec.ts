@@ -84,6 +84,7 @@ function buildModelMock(overrides: Record<string, jest.Mock> = {}) {
   return {
     findOne: jest.fn(),
     findById: jest.fn(),
+    exists: jest.fn(),
     create: jest.fn(),
     findByIdAndUpdate: jest.fn().mockResolvedValue(null),
     ...overrides,
@@ -1082,20 +1083,9 @@ describe('MessagesService', () => {
 
   describe('processBotResponse', () => {
     const WA_ID = '584147083834';
-    const PHONE_NUMBER_ID = '642317185638668';
     const newMessageId = new Types.ObjectId();
     const customerId = new Types.ObjectId();
     const conversationId = new Types.ObjectId();
-
-    const tenant = {
-      _id: new Types.ObjectId(TENANT_ID),
-      whatsappInfo: {
-        accessToken: 'wa-access-token',
-        phoneNumberId: PHONE_NUMBER_ID,
-        businessAccountId: 'biz-001',
-        appSecret: 'secret',
-      },
-    };
 
     const existingCustomer = {
       _id: customerId,
@@ -1112,7 +1102,7 @@ describe('MessagesService', () => {
     };
 
     const textDto: BotResponseDto = {
-      phoneNumberId: PHONE_NUMBER_ID,
+      recipientId: WA_ID,
       tenantId: TENANT_ID,
       content: 'Hola, soy el bot',
       messageType: MessageType.Text,
@@ -1128,7 +1118,9 @@ describe('MessagesService', () => {
     describe('existing customer and conversation', () => {
       beforeEach(() => {
         tenantsService.resolveId.mockResolvedValue(TENANT_ID);
-        tenantModel.findById = jest.fn().mockReturnValue(leanExec(tenant));
+        tenantModel.exists.mockReturnValue({
+          exec: jest.fn().mockResolvedValue({ _id: true }),
+        });
         customerModel.findOne.mockReturnValue(leanExec(existingCustomer));
         conversationModel.findOne.mockReturnValue(
           leanExec(existingConversation),
@@ -1217,7 +1209,9 @@ describe('MessagesService', () => {
 
       beforeEach(() => {
         tenantsService.resolveId.mockResolvedValue(TENANT_ID);
-        tenantModel.findById = jest.fn().mockReturnValue(leanExec(tenant));
+        tenantModel.exists.mockReturnValue({
+          exec: jest.fn().mockResolvedValue({ _id: true }),
+        });
         // First call: customer not found; second call (conversation lookup): not needed
         customerModel.findOne.mockReturnValue(leanExec(null));
         customerModel.create.mockResolvedValue(newCustomer);
@@ -1252,7 +1246,9 @@ describe('MessagesService', () => {
 
       beforeEach(() => {
         tenantsService.resolveId.mockResolvedValue(TENANT_ID);
-        tenantModel.findById = jest.fn().mockReturnValue(leanExec(tenant));
+        tenantModel.exists.mockReturnValue({
+          exec: jest.fn().mockResolvedValue({ _id: true }),
+        });
         customerModel.findOne.mockReturnValue(leanExec(existingCustomer));
         conversationModel.findOne.mockReturnValue(leanExec(null));
         conversationModel.create.mockResolvedValue(newConversation);
@@ -1280,7 +1276,9 @@ describe('MessagesService', () => {
 
       beforeEach(() => {
         tenantsService.resolveId.mockResolvedValue(TENANT_ID);
-        tenantModel.findById = jest.fn().mockReturnValue(leanExec(tenant));
+        tenantModel.exists.mockReturnValue({
+          exec: jest.fn().mockResolvedValue({ _id: true }),
+        });
         customerModel.findOne.mockReturnValue(leanExec(existingCustomer));
         conversationModel.findOne.mockReturnValue(
           leanExec(existingConversation),
@@ -1300,42 +1298,13 @@ describe('MessagesService', () => {
     describe('error cases', () => {
       it('should throw if tenant is not found', async () => {
         tenantsService.resolveId.mockResolvedValue(TENANT_ID);
-        tenantModel.findById = jest.fn().mockReturnValue(leanExec(null));
+        tenantModel.exists.mockReturnValue({
+          exec: jest.fn().mockResolvedValue(null),
+        });
 
         await expect(service.processBotResponse(textDto)).rejects.toThrow(
           `Tenant ${TENANT_ID} not found`,
         );
-      });
-
-      it('should throw if phoneNumberId does not match tenant config', async () => {
-        tenantsService.resolveId.mockResolvedValue(TENANT_ID);
-        tenantModel.findById = jest.fn().mockReturnValue(
-          leanExec({
-            ...tenant,
-            whatsappInfo: { ...tenant.whatsappInfo, phoneNumberId: 'other-id' },
-          }),
-        );
-
-        await expect(service.processBotResponse(textDto)).rejects.toThrow(
-          `phoneNumberId ${PHONE_NUMBER_ID} does not match tenant config`,
-        );
-      });
-
-      it('should throw if metaResponse has no contacts', async () => {
-        tenantsService.resolveId.mockResolvedValue(TENANT_ID);
-        tenantModel.findById = jest.fn().mockReturnValue(leanExec(tenant));
-
-        const dtoWithoutContacts: BotResponseDto = {
-          ...textDto,
-          metaResponse: {
-            ...textDto.metaResponse,
-            contacts: [],
-          },
-        };
-
-        await expect(
-          service.processBotResponse(dtoWithoutContacts),
-        ).rejects.toThrow('metaResponse.contacts is empty');
       });
     });
   });

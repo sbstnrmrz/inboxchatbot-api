@@ -582,47 +582,32 @@ export class MessagesService {
     const resolvedTenantId = await this.tenantsService.resolveId(dto.tenantId);
     const tenantObjectId = new Types.ObjectId(resolvedTenantId);
 
-    // ── 2. Validate phoneNumberId belongs to this tenant ──────────────────
-    const tenant = await this.tenantModel
-      .findById(tenantObjectId)
-      .lean()
+    // ── 2. Validate tenant exists ─────────────────────────────────────────
+    const tenantExists = await this.tenantModel
+      .exists({ _id: tenantObjectId })
       .exec();
 
-    if (!tenant) {
+    if (!tenantExists) {
       throw new Error(`Tenant ${dto.tenantId} not found`);
     }
 
-    if (tenant.whatsappInfo?.phoneNumberId !== dto.phoneNumberId) {
-      throw new Error(
-        `phoneNumberId ${dto.phoneNumberId} does not match tenant config`,
-      );
-    }
-
-    // ── 3. Extract recipient wa_id from Meta response ─────────────────────
-    const recipientWaId = dto.metaResponse.contacts?.[0]?.wa_id;
-    if (!recipientWaId) {
-      throw new Error(
-        'metaResponse.contacts is empty — cannot identify recipient',
-      );
-    }
-
-    // ── 4. Find or create customer ────────────────────────────────────────
+    // ── 3. Find or create customer by recipientId (wa_id) ─────────────────
     let customer = await this.customerModel
       .findOne({
         tenantId: tenantObjectId,
-        'whatsappInfo.id': recipientWaId,
+        'whatsappInfo.id': dto.recipientId,
       })
       .lean()
       .exec();
 
     if (!customer) {
       this.logger.log(
-        `Customer not found for wa_id=${recipientWaId}, creating new customer`,
+        `Customer not found for wa_id=${dto.recipientId}, creating new customer`,
       );
       customer = await this.customerModel.create({
         tenantId: tenantObjectId,
-        name: recipientWaId,
-        whatsappInfo: { id: recipientWaId, name: recipientWaId },
+        name: dto.recipientId,
+        whatsappInfo: { id: dto.recipientId, name: dto.recipientId },
       });
     }
 
@@ -664,7 +649,7 @@ export class MessagesService {
       conversationId: conversationObjectId,
       channel: MessageChannel.WhatsApp,
       direction: MessageDirection.Outbound,
-      messageType: dto.messageType,
+      messageType: dto.messageType ?? MessageType.Text,
       sender: { type: SenderType.Bot },
       body: dto.content,
       media: dto.media,

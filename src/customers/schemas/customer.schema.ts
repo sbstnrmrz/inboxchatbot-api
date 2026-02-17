@@ -39,9 +39,15 @@ export const CustomerSchema = SchemaFactory.createForClass(Customer);
 
 CustomerSchema.index(
   { tenantId: 1, 'whatsappInfo.id': 1 },
-  { unique: true, sparse: true },
+  {
+    unique: true,
+    partialFilterExpression: { 'whatsappInfo.id': { $exists: true } },
+  },
 );
 CustomerSchema.index(
   { tenantId: 1, 'instagramInfo.accountId': 1 },
-  { unique: true, sparse: true },
+  {
+    unique: true,
+    partialFilterExpression: { 'instagramInfo.accountId': { $exists: true } },
+  },
 );

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
@@ -50,6 +50,43 @@ export class ConversationsService {
       .populate('lastMessage')
       .lean()
       .exec() as Promise<ConversationDocument[]>;
+  }
+
+  /**
+   * Toggles the bot on/off for a conversation scoped to the tenant.
+   * Sets botEnabled to the opposite of its current value and records
+   * botDisabledAt when disabling.
+   */
+  async toggleBot(
+    tenantId: string,
+    conversationId: string,
+  ): Promise<Pick<Conversation, 'botEnabled' | 'botDisabledAt'>> {
+    const tenantObjectId = new Types.ObjectId(tenantId);
+    const conversationObjectId = new Types.ObjectId(conversationId);
+
+    const conversation = await this.conversationModel
+      .findOne({ _id: conversationObjectId, tenantId: tenantObjectId })
+      .lean()
+      .exec();
+
+    if (!conversation) {
+      throw new NotFoundException(
+        `Conversation ${conversationId} not found for tenant ${tenantId}`,
+      );
+    }
+
+    const botEnabled = !conversation.botEnabled;
+    const update: Record<string, unknown> = { botEnabled };
+
+    if (!botEnabled) {
+      update['botDisabledAt'] = new Date();
+    }
+
+    return this.conversationModel
+      .findByIdAndUpdate(conversationObjectId, update, { new: true })
+      .select('botEnabled botDisabledAt')
+      .lean()
+      .exec() as Promise<Pick<Conversation, 'botEnabled' | 'botDisabledAt'>>;
   }
 
   create(createConversationDto: CreateConversationDto) {

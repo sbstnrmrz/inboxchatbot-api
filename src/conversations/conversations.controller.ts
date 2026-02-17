@@ -15,7 +15,10 @@ import { ConversationsService } from './conversations.service.js';
 import { CreateConversationDto } from './dto/create-conversation.dto.js';
 import { UpdateConversationDto } from './dto/update-conversation.dto.js';
 import { FindConversationsDto } from './dto/find-conversations.dto.js';
-import { ConversationDocument } from './schemas/conversation.schema.js';
+import {
+  Conversation,
+  ConversationDocument,
+} from './schemas/conversation.schema.js';
 import { MessagesService } from '../messages/messages.service.js';
 import { FindMessagesDto } from '../messages/dto/find-messages.dto.js';
 import { MessageDocument } from '../messages/schemas/message.schema.js';
@@ -85,6 +88,22 @@ export class ConversationsController {
    *
    * GET /conversations/:conversationId/messages
    */
+  /**
+   * Toggles bot enabled/disabled for a conversation.
+   * PATCH /conversations/:id/toggle-bot
+   */
+  @Patch(':id/toggle-bot')
+  async toggleBot(
+    @Param('id') id: string,
+    @Request() req: ExpressRequest & { tenantId?: string },
+  ): Promise<Pick<Conversation, 'botEnabled' | 'botDisabledAt'>> {
+    if (!req.tenantId) {
+      throw new UnauthorizedException('Tenant not resolved');
+    }
+
+    return this.conversationsService.toggleBot(req.tenantId, id);
+  }
+
   @Get(':conversationId/messages')
   async findMessages(
     @Param('conversationId') conversationId: string,

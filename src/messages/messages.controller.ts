@@ -51,6 +51,7 @@ export class MessagesController {
    */
   @Post('bot-response')
   @HttpCode(HttpStatus.CREATED)
+  @AllowAnonymous()
   async botResponse(@Body() dto: BotResponseDto): Promise<MessageDocument> {
     return this.messagesService.processBotResponse(dto);
   }

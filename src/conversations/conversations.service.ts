@@ -89,6 +89,41 @@ export class ConversationsService {
       .exec() as Promise<Pick<Conversation, 'botEnabled' | 'botDisabledAt'>>;
   }
 
+  /**
+   * Marks a conversation as read: resets unreadCount to 0 and sets readAt.
+   * Returns the fields needed for the conversation_read socket event.
+   */
+  async markAsRead(
+    tenantId: string,
+    conversationId: string,
+  ): Promise<{ conversationId: string; unreadCount: 0; readAt: string }> {
+    const tenantObjectId = new Types.ObjectId(tenantId);
+    const conversationObjectId = new Types.ObjectId(conversationId);
+    const readAt = new Date();
+
+    const updated = await this.conversationModel
+      .findOneAndUpdate(
+        { _id: conversationObjectId, tenantId: tenantObjectId },
+        { unreadCount: 0, readAt },
+        { new: true },
+      )
+      .select('_id')
+      .lean()
+      .exec();
+
+    if (!updated) {
+      throw new NotFoundException(
+        `Conversation ${conversationId} not found for tenant ${tenantId}`,
+      );
+    }
+
+    return {
+      conversationId,
+      unreadCount: 0,
+      readAt: readAt.toISOString(),
+    };
+  }
+
   create(createConversationDto: CreateConversationDto) {
     return 'This action adds a new conversation';
   }

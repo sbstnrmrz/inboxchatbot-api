@@ -17,6 +17,6 @@ import { MessagesModule } from '../messages/messages.module.js';
   ],
   controllers: [ConversationsController],
   providers: [ConversationsService],
-  exports: [MongooseModule],
+  exports: [MongooseModule, ConversationsService],
 })
 export class ConversationsModule {}

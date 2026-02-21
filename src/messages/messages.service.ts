@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
@@ -29,7 +29,11 @@ import { WhatsAppSendMessageResponseDto } from './dto/whatsapp/whatsapp-send-mes
 import { ChatGateway } from '../chat/chat.gateway.js';
 import { MessageEvent } from '../chat/enums/message-events.enum.js';
 import { TenantsService } from '../tenants/tenants.service.js';
-import { BotResponseDto } from './dto/bot-response.dto.js';
+import {
+  BotResponseDto,
+  isInstagramMetaResponse,
+} from './dto/bot-response.dto.js';
+import { InstagramUserProfileDto } from './dto/instagram/instagram-user-profile.dto.js';
 import { FilesService } from '../files/files.service.js';
 import { FindMessagesDto } from './dto/find-messages.dto.js';
 
@@ -46,6 +50,7 @@ export class MessagesService {
     private readonly conversationModel: Model<ConversationDocument>,
     @InjectModel(Tenant.name)
     private readonly tenantModel: Model<TenantDocument>,
+    @Inject(forwardRef(() => ChatGateway))
     private readonly chatGateway: ChatGateway,
     private readonly tenantsService: TenantsService,
     private readonly filesService: FilesService,
@@ -249,6 +254,12 @@ export class MessagesService {
     const tenantObjectId = new Types.ObjectId(tenantId);
     const savedMessages: MessageDocument[] = [];
 
+    // Load tenant once to get the Instagram access token for profile lookups
+    const tenant = await this.tenantModel
+      .findById(tenantObjectId)
+      .lean()
+      .exec();
+
     for (const entry of payload.entry) {
       if (!entry.messaging?.length) continue;
 
@@ -274,10 +285,29 @@ export class MessagesService {
           this.logger.log(
             `Customer not found for ig_scoped_id=${senderId}, creating new customer`,
           );
+
+          // Fetch Instagram profile to enrich the customer record
+          let profile: InstagramUserProfileDto | null = null;
+          if (tenant?.instagramInfo?.accessToken) {
+            profile = await this.getInstagramUserProfile(
+              senderId,
+              tenant.instagramInfo.accessToken,
+            ).catch((err: unknown) => {
+              this.logger.warn(
+                `[IG] Could not fetch profile for ig_scoped_id=${senderId}: ${(err as Error).message}`,
+              );
+              return null;
+            });
+          }
+
           customer = await this.customerModel.create({
             tenantId: tenantObjectId,
-            name: senderId,
-            instagramInfo: { accountId: senderId },
+            name: profile?.name ?? profile?.username ?? senderId,
+            instagramInfo: {
+              accountId: senderId,
+              username: profile?.username,
+              profilePic: profile?.profile_pic,
+            },
           });
         }
 
@@ -519,7 +549,7 @@ export class MessagesService {
     }
 
     const response = await fetch(
-      `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
+      `https://graph.facebook.com/v23.0/${phoneNumberId}/messages`,
       {
         method: 'POST',
         headers: {
@@ -535,6 +565,42 @@ export class MessagesService {
     }
 
     return response.json() as Promise<WhatsAppSendMessageResponseDto>;
+  }
+
+  /**
+   * Fetches an Instagram user's profile information using their Instagram-scoped ID (IGSID).
+   * Requires user consent — the user must have sent a message to the business account first.
+   *
+   * @see https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/messaging-api/user-profile
+   */
+  async getInstagramUserProfile(
+    igScopedId: string,
+    accessToken: string,
+  ): Promise<InstagramUserProfileDto> {
+    const fields = [
+      'name',
+      'username',
+      'profile_pic',
+      'follower_count',
+      'is_user_follow_business',
+      'is_business_follow_user',
+      'is_verified_user',
+    ].join(',');
+
+    const url = new URL(`https://graph.instagram.com/v19.0/${igScopedId}`);
+    url.searchParams.set('fields', fields);
+    url.searchParams.set('access_token', accessToken);
+
+    const response = await fetch(url.toString());
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(
+        `Instagram User Profile API error ${response.status}: ${errorBody}`,
+      );
+    }
+
+    return response.json() as Promise<InstagramUserProfileDto>;
   }
 
   async callInstagramApi(
@@ -559,7 +625,7 @@ export class MessagesService {
     }
 
     const response = await fetch(
-      `https://graph.instagram.com/v19.0/${igUserId}/messages`,
+      `https://graph.instagram.com/v23.0/${igUserId}/messages`,
       {
         method: 'POST',
         headers: {
@@ -591,34 +657,62 @@ export class MessagesService {
       throw new Error(`Tenant ${dto.tenantId} not found`);
     }
 
-    // ── 3. Find or create customer by recipientId (wa_id) ─────────────────
-    let customer = await this.customerModel
-      .findOne({
+    // ── 3. Detect channel from metaResponse shape and extract recipientId ──
+    let recipientId: string;
+    let channel: ConversationChannel;
+    let messageChannel: MessageChannel;
+    let customerFilter: Record<string, unknown>;
+    let customerCreateData: Record<string, unknown>;
+
+    if (isInstagramMetaResponse(dto.metaResponse)) {
+      recipientId = dto.metaResponse.recipient_id;
+      channel = ConversationChannel.Instagram;
+      messageChannel = MessageChannel.Instagram;
+      customerFilter = {
         tenantId: tenantObjectId,
-        'whatsappInfo.id': dto.recipientId,
-      })
+        'instagramInfo.accountId': recipientId,
+      };
+      customerCreateData = {
+        tenantId: tenantObjectId,
+        name: recipientId,
+        instagramInfo: { accountId: recipientId, name: recipientId },
+      };
+    } else {
+      recipientId = dto.metaResponse.contacts?.[0]?.wa_id ?? '';
+      channel = ConversationChannel.WhatsApp;
+      messageChannel = MessageChannel.WhatsApp;
+      customerFilter = {
+        tenantId: tenantObjectId,
+        'whatsappInfo.id': recipientId,
+      };
+      customerCreateData = {
+        tenantId: tenantObjectId,
+        name: recipientId,
+        whatsappInfo: { id: recipientId, name: recipientId },
+      };
+    }
+
+    // ── 4. Find or create customer by recipientId ─────────────────────────
+    let customer = await this.customerModel
+      .findOne(customerFilter)
       .lean()
       .exec();
 
     if (!customer) {
       this.logger.log(
-        `Customer not found for wa_id=${dto.recipientId}, creating new customer`,
+        `Customer not found for recipientId=${recipientId} (${channel}), creating new customer`,
       );
-      customer = await this.customerModel.create({
-        tenantId: tenantObjectId,
-        name: dto.recipientId,
-        whatsappInfo: { id: dto.recipientId, name: dto.recipientId },
-      });
+      customer = await this.customerModel.create(customerCreateData);
     }
 
     const customerObjectId = (customer as any)._id as Types.ObjectId;
 
-    // ── 5. Find or create active WhatsApp conversation ────────────────────
+    // ── 5. Find or create active conversation ─────────────────────────────
     let conversation = await this.conversationModel
       .findOne({
         tenantId: tenantObjectId,
         customerId: customerObjectId,
-        channel: ConversationChannel.WhatsApp,
+        channel,
         status: { $in: [ConversationStatus.Open, ConversationStatus.Pending] },
       })
       .lean()
@@ -626,20 +720,25 @@ export class MessagesService {
 
     if (!conversation) {
       this.logger.log(
-        `No active WhatsApp conversation for customerId=${customerObjectId}, creating`,
+        `No active ${channel} conversation for customerId=${customerObjectId}, creating`,
       );
       conversation = await this.conversationModel.create({
         tenantId: tenantObjectId,
         customerId: customerObjectId,
-        channel: ConversationChannel.WhatsApp,
+        channel,
         status: ConversationStatus.Open,
       });
     }
 
     const conversationObjectId = (conversation as any)._id as Types.ObjectId;
 
-    // ── 6. Extract wamid from Meta response ───────────────────────────────
-    const externalId = dto.metaResponse.messages?.[0]?.id;
+    // ── 6. Extract externalId from Meta response ──────────────────────────
+    let externalId: string | undefined;
+    if (isInstagramMetaResponse(dto.metaResponse)) {
+      externalId = dto.metaResponse.message_id;
+    } else {
+      externalId = dto.metaResponse.messages?.[0]?.id;
+    }
 
     const sentAt = new Date();
 
@@ -647,7 +746,7 @@ export class MessagesService {
     const message = await this.messageModel.create({
       tenantId: tenantObjectId,
       conversationId: conversationObjectId,
-      channel: MessageChannel.WhatsApp,
+      channel: messageChannel,
       direction: MessageDirection.Outbound,
       messageType: dto.messageType ?? MessageType.Text,
       sender: { type: SenderType.Bot },

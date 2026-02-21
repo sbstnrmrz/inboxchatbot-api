@@ -12,6 +12,7 @@ export interface CustomerInstagramInfo {
   accountId: string;
   name?: string;
   username?: string;
+  profilePic?: string;
 }
 
 @Schema({ timestamps: true })

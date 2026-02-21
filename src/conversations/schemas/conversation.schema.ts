@@ -55,6 +55,9 @@ export class Conversation {
   @Prop({ type: Date })
   botDisabledAt?: Date;
 
+  @Prop({ type: Date })
+  readAt?: Date;
+
   createdAt?: Date;
   updatedAt?: Date;
 }

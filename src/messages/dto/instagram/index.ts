@@ -23,3 +23,5 @@ export {
   InstagramWebhookCommentFromDto,
   InstagramWebhookCommentMediaDto,
 } from './instagram-webhook-comment-value.dto.js';
+export { InstagramSendMessageResponseDto } from './instagram-send-message-response.dto.js';
+export { InstagramUserProfileDto } from './instagram-user-profile.dto.js';

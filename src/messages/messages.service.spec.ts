@@ -22,6 +22,7 @@ import { Tenant } from '../tenants/schemas/tenant.schema.js';
 import { SendMessageDto } from './dto/send-message.dto.js';
 import { TenantsService } from '../tenants/tenants.service.js';
 import { BotResponseDto } from './dto/bot-response.dto.js';
+import { FilesService } from '../files/files.service.js';
 
 // Mock ChatGateway to avoid pulling in better-auth ESM dependencies
 const mockChatGateway = { emitToTenant: jest.fn() };
@@ -80,10 +81,19 @@ const waTextPayload: WhatsAppN8nWebhookItemDto = {
 
 // ── Model mock factory ────────────────────────────────────────────────────────
 
+const DEFAULT_TENANT = {
+  whatsappInfo: { accessToken: null, phoneNumberId: null },
+  instagramInfo: { accessToken: null, accountId: null },
+};
+
 function buildModelMock(overrides: Record<string, jest.Mock> = {}) {
   return {
     findOne: jest.fn(),
-    findById: jest.fn(),
+    // Returns a tenant stub by default so processWhatsAppWebhook can load
+    // the tenant for media downloads without extra setup in each suite.
+    findById: jest.fn().mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve(DEFAULT_TENANT) }),
+    }),
     exists: jest.fn(),
     create: jest.fn(),
     findByIdAndUpdate: jest.fn().mockResolvedValue(null),
@@ -124,6 +134,13 @@ describe('MessagesService', () => {
         {
           provide: TenantsService,
           useValue: { resolveId: jest.fn() },
+        },
+        {
+          provide: FilesService,
+          useValue: {
+            downloadWhatsAppMedia: jest.fn().mockResolvedValue(undefined),
+            downloadInstagramMedia: jest.fn().mockResolvedValue(undefined),
+          },
         },
       ],
     }).compile();
@@ -1102,7 +1119,6 @@ describe('MessagesService', () => {
     };
 
     const textDto: BotResponseDto = {
-      recipientId: WA_ID,
       tenantId: TENANT_ID,
       content: 'Hola, soy el bot',
       messageType: MessageType.Text,
@@ -1305,6 +1321,178 @@ describe('MessagesService', () => {
         await expect(service.processBotResponse(textDto)).rejects.toThrow(
           `Tenant ${TENANT_ID} not found`,
         );
+      });
+    });
+
+    // ── Instagram metaResponse ─────────────────────────────────────────────
+
+    describe('Instagram metaResponse', () => {
+      const IGSID = '26171369109181060';
+      const IG_MESSAGE_ID =
+        'aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDUwMzY1NTQ0ODg3OjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI3NjAzMDM5NDk4NzcwNjQ1OTozMjY3OTExOTM4OTQ5NTA0NTc5NzU0ODIwMDUxNjY0ODk2MAZDZD';
+
+      const igDto: BotResponseDto = {
+        tenantId: TENANT_ID,
+        content: 'Hola desde el bot',
+        messageType: MessageType.Text,
+        metaResponse: {
+          recipient_id: IGSID,
+          message_id: IG_MESSAGE_ID,
+        },
+      };
+
+      const igCustomer = {
+        _id: customerId,
+        name: IGSID,
+        instagramInfo: { accountId: IGSID, name: IGSID },
+      };
+
+      const igConversation = {
+        _id: conversationId,
+        tenantId: new Types.ObjectId(TENANT_ID),
+        customerId,
+        channel: ConversationChannel.Instagram,
+        status: ConversationStatus.Open,
+      };
+
+      // ── happy path ──────────────────────────────────────────────────────
+
+      describe('existing customer and conversation', () => {
+        beforeEach(() => {
+          tenantsService.resolveId.mockResolvedValue(TENANT_ID);
+          tenantModel.exists.mockReturnValue({
+            exec: jest.fn().mockResolvedValue({ _id: true }),
+          });
+          customerModel.findOne.mockReturnValue(leanExec(igCustomer));
+          conversationModel.findOne.mockReturnValue(leanExec(igConversation));
+          messageModel.create.mockResolvedValue({
+            _id: newMessageId,
+            channel: MessageChannel.Instagram,
+            direction: MessageDirection.Outbound,
+            messageType: MessageType.Text,
+            body: 'Hola desde el bot',
+            externalId: IG_MESSAGE_ID,
+            status: MessageStatus.Sent,
+            sender: { type: SenderType.Bot },
+          });
+        });
+
+        it('should look up the customer by instagramInfo.accountId', async () => {
+          await service.processBotResponse(igDto);
+
+          expect(customerModel.findOne).toHaveBeenCalledWith(
+            expect.objectContaining({
+              'instagramInfo.accountId': IGSID,
+            }),
+          );
+        });
+
+        it('should persist the message with channel INSTAGRAM and sender type BOT', async () => {
+          await service.processBotResponse(igDto);
+
+          expect(messageModel.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+              channel: MessageChannel.Instagram,
+              direction: MessageDirection.Outbound,
+              sender: { type: SenderType.Bot },
+            }),
+          );
+        });
+
+        it('should use message_id from the Instagram metaResponse as externalId', async () => {
+          await service.processBotResponse(igDto);
+
+          expect(messageModel.create).toHaveBeenCalledWith(
+            expect.objectContaining({ externalId: IG_MESSAGE_ID }),
+          );
+        });
+
+        it('should find the conversation scoped to Instagram channel', async () => {
+          await service.processBotResponse(igDto);
+
+          expect(conversationModel.findOne).toHaveBeenCalledWith(
+            expect.objectContaining({
+              channel: ConversationChannel.Instagram,
+            }),
+          );
+        });
+
+        it('should update lastMessage on the conversation', async () => {
+          await service.processBotResponse(igDto);
+
+          expect(conversationModel.findByIdAndUpdate).toHaveBeenCalledWith(
+            conversationId,
+            expect.objectContaining({ lastMessage: newMessageId }),
+          );
+        });
+
+        it('should emit a real-time socket event to the tenant room', async () => {
+          const chatGateway = service['chatGateway'] as unknown as {
+            emitToTenant: jest.Mock;
+          };
+
+          await service.processBotResponse(igDto);
+
+          expect(chatGateway.emitToTenant).toHaveBeenCalledWith(
+            TENANT_ID,
+            'message_sent',
+            expect.objectContaining({ _id: newMessageId }),
+          );
+        });
+      });
+
+      // ── customer not found: should create with instagramInfo ────────────
+
+      describe('customer does not exist yet', () => {
+        beforeEach(() => {
+          tenantsService.resolveId.mockResolvedValue(TENANT_ID);
+          tenantModel.exists.mockReturnValue({
+            exec: jest.fn().mockResolvedValue({ _id: true }),
+          });
+          customerModel.findOne.mockReturnValue(leanExec(null));
+          customerModel.create.mockResolvedValue(igCustomer);
+          conversationModel.findOne.mockReturnValue(leanExec(igConversation));
+          messageModel.create.mockResolvedValue({ _id: newMessageId });
+        });
+
+        it('should create the customer with instagramInfo from recipientId', async () => {
+          await service.processBotResponse(igDto);
+
+          expect(customerModel.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+              tenantId: new Types.ObjectId(TENANT_ID),
+              instagramInfo: { accountId: IGSID, name: IGSID },
+            }),
+          );
+        });
+      });
+
+      // ── conversation not found: should create an Instagram one ──────────
+
+      describe('active conversation does not exist yet', () => {
+        beforeEach(() => {
+          tenantsService.resolveId.mockResolvedValue(TENANT_ID);
+          tenantModel.exists.mockReturnValue({
+            exec: jest.fn().mockResolvedValue({ _id: true }),
+          });
+          customerModel.findOne.mockReturnValue(leanExec(igCustomer));
+          conversationModel.findOne.mockReturnValue(leanExec(null));
+          conversationModel.create.mockResolvedValue(igConversation);
+          messageModel.create.mockResolvedValue({ _id: newMessageId });
+        });
+
+        it('should create a new Instagram conversation with status OPEN', async () => {
+          await service.processBotResponse(igDto);
+
+          expect(conversationModel.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+              tenantId: new Types.ObjectId(TENANT_ID),
+              customerId,
+              channel: ConversationChannel.Instagram,
+              status: ConversationStatus.Open,
+            }),
+          );
+        });
       });
     });
   });

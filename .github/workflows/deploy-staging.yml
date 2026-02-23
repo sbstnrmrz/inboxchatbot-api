@@ -1,0 +1,40 @@
+name: Build staging image 
+
+on:
+  push:
+    branches: ["dev"]
+
+jobs:
+  build-and-push-dockerfile-image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }} 
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          # Make sure to replace with your own namespace and repository
+          tags: |
+            sbstnrmrz/inboxchatbot-api:staging 
+          platforms: linux/amd64
+      - name: Trigger Dokploy Deployment
+        run: |
+            curl -X 'POST' \
+            'http://167.172.211.238:3000/api/application.deploy' \
+            -H 'accept: application/json' \
+            -H 'x-api-key: ${{ secrets.DOKPLOY_API_KEY }}' \
+            -H 'Content-Type: application/json' \
+            -d '{
+                 "applicationId": "u9LpUIv-yPrQh41Ijspxe"
+            }'

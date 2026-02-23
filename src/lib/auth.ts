@@ -4,7 +4,7 @@ import { mongodbAdapter } from 'better-auth/adapters/mongodb';
 import { MongoClient } from 'mongodb';
 import { ac, user, admin as adminRole, superAdmin } from './permissions';
 
-const client = new MongoClient(process.env.MONGODB_URI!);
+export const client = new MongoClient(process.env.MONGODB_URI!);
 
 const isProduction = process.env.NODE_ENV === 'production';
 

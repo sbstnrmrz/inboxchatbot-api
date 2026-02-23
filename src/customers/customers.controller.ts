@@ -6,7 +6,10 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Request as ExpressRequest } from 'express';
-import { CustomersService } from './customers.service.js';
+import {
+  CustomersService,
+  CustomerWithMessageCount,
+} from './customers.service.js';
 import { FindCustomersDto } from './dto/find-customers.dto.js';
 import { CustomerDocument } from './schemas/customer.schema.js';
 
@@ -36,5 +39,25 @@ export class CustomersController {
     }
 
     return this.customersService.findAll(req.tenantId, dto);
+  }
+
+  /**
+   * Returns a paginated list of customers enriched with a `messageCount` field
+   * containing the total number of messages across all their conversations.
+   *
+   * Accepts the same cursor-based pagination and search query params as GET /customers.
+   *
+   * GET /customers/additional
+   */
+  @Get('additional')
+  async findAllWithMessageCount(
+    @Query() dto: FindCustomersDto,
+    @Request() req: ExpressRequest & { tenantId?: string },
+  ): Promise<CustomerWithMessageCount[]> {
+    if (!req.tenantId) {
+      throw new UnauthorizedException('Tenant not resolved');
+    }
+
+    return this.customersService.findAllWithMessageCount(req.tenantId, dto);
   }
 }

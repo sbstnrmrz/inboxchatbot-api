@@ -9,7 +9,10 @@ import {
 } from '@nestjs/common';
 import { MessagesService } from './messages.service.js';
 import { BotResponseDto } from './dto/bot-response.dto.js';
-import { MessageDocument } from './schemas/message.schema.js';
+import {
+  MessageDocument,
+  MessageReceivedResult,
+} from './schemas/message.schema.js';
 import type { MessageReceivedDto } from './dto/message-received.dto.js';
 import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
 
@@ -34,7 +37,7 @@ export class MessagesController {
   async messageReceived(
     @Headers('tenant-id') tenantId: string,
     @Body() payload: MessageReceivedDto,
-  ): Promise<MessageDocument[]> {
+  ): Promise<MessageReceivedResult[]> {
     if (!tenantId) {
       throw new BadRequestException('Missing required header: Tenant-Id');
     }

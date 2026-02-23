@@ -9,6 +9,7 @@ import {
   MessageType,
   MessageStatus,
   SenderType,
+  MessageReceivedResult,
 } from './schemas/message.schema.js';
 import {
   Customer,
@@ -95,8 +96,10 @@ export class MessagesService {
   async processWhatsAppWebhook(
     tenantId: string,
     payload: WhatsAppN8nWebhookItemDto,
-  ): Promise<MessageDocument[]> {
+  ): Promise<MessageReceivedResult[]> {
     const { messages, contacts } = payload;
+    this.logger.debug('Received WhatsApp Messsage');
+    this.logger.debug(payload);
 
     if (!messages?.length) {
       this.logger.debug('WhatsApp webhook received with no messages, skipping');
@@ -104,7 +107,7 @@ export class MessagesService {
     }
 
     const tenantObjectId = new Types.ObjectId(tenantId);
-    const savedMessages: MessageDocument[] = [];
+    const savedMessages: MessageReceivedResult[] = [];
 
     // Load tenant once to get the WhatsApp access token for media downloads
     const tenant = await this.tenantModel
@@ -220,7 +223,11 @@ export class MessagesService {
         $inc: { unreadCount: 1 },
       });
 
-      savedMessages.push(message);
+      savedMessages.push({
+        message,
+        isBlocked: (customer as any).isBlocked ?? false,
+        botEnabled: (conversation as any).botEnabled ?? true,
+      });
 
       // ── Emit real-time event to tenant room ────────────────────────────
       this.chatGateway.emitToTenant(tenantId, MessageEvent.Received, message);
@@ -250,9 +257,12 @@ export class MessagesService {
   async processInstagramWebhook(
     tenantId: string,
     payload: InstagramWebhookDto,
-  ): Promise<MessageDocument[]> {
+  ): Promise<MessageReceivedResult[]> {
     const tenantObjectId = new Types.ObjectId(tenantId);
-    const savedMessages: MessageDocument[] = [];
+    const savedMessages: MessageReceivedResult[] = [];
+
+    this.logger.debug('Received Instagram Messsage');
+    this.logger.debug(payload);
 
     // Load tenant once to get the Instagram access token for profile lookups
     const tenant = await this.tenantModel
@@ -309,6 +319,7 @@ export class MessagesService {
               profilePic: profile?.profile_pic,
             },
           });
+          this.logger.debug('Message Created');
         }
 
         const customerObjectId = (customer as any)._id as Types.ObjectId;
@@ -379,7 +390,11 @@ export class MessagesService {
           $inc: { unreadCount: 1 },
         });
 
-        savedMessages.push(message);
+        savedMessages.push({
+          message,
+          isBlocked: (customer as any).isBlocked ?? false,
+          botEnabled: (conversation as any).botEnabled ?? true,
+        });
 
         // ── Emit real-time event to tenant room ──────────────────────────────
         this.chatGateway.emitToTenant(tenantId, MessageEvent.Received, message);
@@ -647,6 +662,8 @@ export class MessagesService {
     // ── 1. Resolve tenantId (accepts slug or ObjectId) ────────────────────
     const resolvedTenantId = await this.tenantsService.resolveId(dto.tenantId);
     const tenantObjectId = new Types.ObjectId(resolvedTenantId);
+    this.logger.debug('Sending Bot Response');
+    this.logger.debug(dto);
 
     // ── 2. Validate tenant exists ─────────────────────────────────────────
     const tenantExists = await this.tenantModel
@@ -779,13 +796,13 @@ export class MessagesService {
   async messageReceived(
     tenantId: string,
     payload: MessageReceivedDto,
-  ): Promise<MessageDocument[]> {
+  ): Promise<MessageReceivedResult[]> {
     const resolvedTenantId = await this.tenantsService.resolveId(tenantId);
 
     if (
       (payload as WhatsAppN8nWebhookItemDto).messaging_product === 'whatsapp'
     ) {
-      this.logger.log(`[messageReceived] Channel detected: WhatsApp`);
+      this.logger.debug(`[messageReceived] Channel detected: WhatsApp`);
       return this.processWhatsAppWebhook(
         resolvedTenantId,
         payload as WhatsAppN8nWebhookItemDto,
@@ -793,7 +810,7 @@ export class MessagesService {
     }
 
     if ((payload as InstagramWebhookDto).object === 'instagram') {
-      this.logger.log(`[messageReceived] Channel detected: Instagram`);
+      this.logger.debug(`[messageReceived] Channel detected: Instagram`);
       return this.processInstagramWebhook(
         resolvedTenantId,
         payload as InstagramWebhookDto,

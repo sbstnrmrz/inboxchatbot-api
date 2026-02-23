@@ -2,7 +2,20 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Customer, CustomerDocument } from './schemas/customer.schema.js';
+import {
+  Conversation,
+  ConversationDocument,
+} from '../conversations/schemas/conversation.schema.js';
+import {
+  Message,
+  MessageDocument,
+} from '../messages/schemas/message.schema.js';
 import { FindCustomersDto } from './dto/find-customers.dto.js';
+
+export type CustomerWithMessageCount = CustomerDocument & {
+  conversationId: Types.ObjectId | null;
+  messageCount: number;
+};
 
 @Injectable()
 export class CustomersService {
@@ -11,6 +24,10 @@ export class CustomersService {
   constructor(
     @InjectModel(Customer.name)
     private readonly customerModel: Model<CustomerDocument>,
+    @InjectModel(Conversation.name)
+    private readonly conversationModel: Model<ConversationDocument>,
+    @InjectModel(Message.name)
+    private readonly messageModel: Model<MessageDocument>,
   ) {}
 
   /**
@@ -46,5 +63,104 @@ export class CustomersService {
       .limit(limit)
       .lean()
       .exec() as Promise<CustomerDocument[]>;
+  }
+
+  /**
+   * Returns a paginated list of customers enriched with a `messageCount` field,
+   * representing the total number of messages sent by each customer across all
+   * their conversations within the tenant.
+   *
+   * Uses an aggregation pipeline:
+   *   customers → lookup conversations → lookup messages → count messages
+   *
+   * Cursor-based pagination and search follow the same semantics as `findAll`.
+   */
+  async findAllWithMessageCount(
+    tenantId: string,
+    dto: FindCustomersDto,
+  ): Promise<CustomerWithMessageCount[]> {
+    const { before, limit = 20, search } = dto;
+    const tenantObjectId = new Types.ObjectId(tenantId);
+
+    const matchStage: Record<string, unknown> = { tenantId: tenantObjectId };
+
+    if (before) {
+      matchStage['createdAt'] = { $lt: new Date(before) };
+    }
+
+    if (search) {
+      matchStage['name'] = { $regex: search, $options: 'i' };
+    }
+
+    const results =
+      await this.customerModel.aggregate<CustomerWithMessageCount>([
+        { $match: matchStage },
+        { $sort: { createdAt: -1 } },
+        { $limit: limit },
+        // Join the conversation that belongs to this customer within the tenant
+        {
+          $lookup: {
+            from: this.conversationModel.collection.name,
+            let: { customerId: '$_id', tenantId: '$tenantId' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ['$customerId', '$$customerId'] },
+                      { $eq: ['$tenantId', '$$tenantId'] },
+                    ],
+                  },
+                },
+              },
+              { $project: { _id: 1 } },
+            ],
+            as: 'conversations',
+          },
+        },
+        // Join messages that belong to those conversations within the tenant
+        {
+          $lookup: {
+            from: this.messageModel.collection.name,
+            let: {
+              conversationIds: '$conversations._id',
+              tenantId: '$tenantId',
+            },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $in: ['$conversationId', '$$conversationIds'] },
+                      { $eq: ['$tenantId', '$$tenantId'] },
+                    ],
+                  },
+                },
+              },
+              { $count: 'total' },
+            ],
+            as: 'messageSummary',
+          },
+        },
+        // Project final shape: all customer fields + conversationId + messageCount
+        {
+          $addFields: {
+            conversationId: {
+              $ifNull: [{ $arrayElemAt: ['$conversations._id', 0] }, null],
+            },
+            messageCount: {
+              $ifNull: [{ $arrayElemAt: ['$messageSummary.total', 0] }, 0],
+            },
+          },
+        },
+        {
+          $project: {
+            conversations: 0,
+            messageSummary: 0,
+          },
+        },
+      ]);
+
+    return results;
   }
 }

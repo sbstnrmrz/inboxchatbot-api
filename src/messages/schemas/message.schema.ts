@@ -222,5 +222,19 @@ export class Message {
 
 export const MessageSchema = SchemaFactory.createForClass(Message);
 
+// ─── Enriched response for POST /messages/receive ────────────────────────────
+
+/**
+ * Enriched response returned by POST /messages/receive.
+ * Includes customer and conversation state so the caller does not need extra requests.
+ */
+export interface MessageReceivedResult {
+  message: MessageDocument;
+  /** Whether the customer is blocked (from Customer.isBlocked) */
+  isBlocked: boolean;
+  /** Whether the bot is enabled for this conversation (from Conversation.botEnabled) */
+  botEnabled: boolean;
+}
+
 MessageSchema.index({ tenantId: 1, conversationId: 1, sentAt: -1 });
 MessageSchema.index({ tenantId: 1, externalId: 1 }, { sparse: true });

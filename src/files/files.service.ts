@@ -41,8 +41,12 @@ export class FilesService {
   private readonly uploadsDir: string;
 
   constructor(private readonly configService: ConfigService) {
+    const isProduction =
+      this.configService.get<string>('NODE_ENV') === 'production';
     this.uploadsDir =
-      this.configService.get<string>('UPLOADS_DIR') ?? 'uploads';
+      this.configService.get<string>('UPLOADS_DIR') ??
+      (isProduction ? '/app/uploads' : 'uploads');
+    this.logger.log(`Uploads dir: ${this.uploadsDir}`);
     this.ensureUploadsDir();
   }
 

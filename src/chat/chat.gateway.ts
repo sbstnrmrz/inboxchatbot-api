@@ -18,26 +18,36 @@ import { ConversationEvent } from './enums/conversation-events.enum.js';
 import { MessagesService } from '../messages/messages.service.js';
 import { SendMessageDto } from '../messages/dto/send-message.dto.js';
 
-// Build allowed origins list: exact origins + subdomain RegExp for each
-const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
-  .split(',')
-  .map((o) => o.trim())
-  .filter(Boolean);
+function isOriginAllowed(origin: string): boolean {
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
 
-const corsOrigins = allowedOrigins.flatMap((origin) => {
-  const { hostname, port, protocol } = new URL(origin);
-  return [
-    origin,
-    new RegExp(
-      `^${protocol}//[^.]+\\.${hostname.replace('.', '\\.')}${port ? `:${port}` : ''}$`,
-    ),
-  ];
-});
+  return allowedOrigins.some((allowed) => {
+    if (origin === allowed) return true;
+    const { hostname, port, protocol } = new URL(allowed);
+    const subdomainRegex = new RegExp(
+      `^${protocol}//[^.]+\\.${hostname.replace(/\./g, '\\.')}${port ? `:${port}` : ''}$`,
+    );
+    return subdomainRegex.test(origin);
+  });
+}
 
 @WebSocketGateway({
   path: '/socket',
   cors: {
-    origin: corsOrigins,
+    origin: (
+      origin: string,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
+      if (!origin) return callback(null, true);
+      if (isOriginAllowed(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS: WebSocket origin ${origin} not allowed`));
+      }
+    },
     credentials: true,
   },
 })

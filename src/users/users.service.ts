@@ -42,18 +42,15 @@ export class UsersService {
 
   async findAll(headers: Headers) {
     const result = await auth.api.listUsers({
-      query: {},
+      query: {
+        filterField: 'role',
+        filterOperator: 'ne',
+        filterValue: 'superadmin',
+      },
       headers,
     });
 
-    const users = (result?.users ?? []) as Array<
-      { role?: string } & Record<string, unknown>
-    >;
-
-    return {
-      ...result,
-      users: users.filter((u) => u.role !== 'superadmin'),
-    };
+    return result;
   }
 
   async findOne(id: string, headers: Headers) {

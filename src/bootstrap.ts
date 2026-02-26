@@ -33,14 +33,14 @@ export async function bootstrapRootData(): Promise<void> {
 
   // --- Tenant ---
   let tenant = await db
-    .collection('tenant')
+    .collection('tenants')
     .findOne({ slug: SYSTEM_TENANT_SLUG });
 
   if (!tenant) {
     const tenantId = new ObjectId();
     const now = new Date();
 
-    await db.collection('tenant').insertOne({
+    await db.collection('tenants').insertOne({
       _id: tenantId,
       slug: SYSTEM_TENANT_SLUG,
       name: SYSTEM_TENANT_NAME,
@@ -48,7 +48,7 @@ export async function bootstrapRootData(): Promise<void> {
       updatedAt: now,
     });
 
-    await db.collection('membership').insertOne({
+    await db.collection('memberships').insertOne({
       tenantId,
       status: MembershipStatus.Active,
       createdAt: now,

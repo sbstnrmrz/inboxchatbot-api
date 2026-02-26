@@ -46,7 +46,14 @@ export class UsersService {
       headers,
     });
 
-    return result;
+    const users = (result?.users ?? []) as Array<
+      { role?: string } & Record<string, unknown>
+    >;
+
+    return {
+      ...result,
+      users: users.filter((u) => u.role !== 'superadmin'),
+    };
   }
 
   async findOne(id: string, headers: Headers) {

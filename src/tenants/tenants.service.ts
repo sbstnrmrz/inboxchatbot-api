@@ -43,7 +43,11 @@ export class TenantsService {
   }
 
   async findAll(): Promise<TenantDocument[]> {
-    return this.tenantModel.find().sort({ createdAt: -1 }).lean().exec();
+    return this.tenantModel
+      .find({ slug: { $ne: 'system' } })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
   }
 
   async findOne(id: string): Promise<TenantDocument> {

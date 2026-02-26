@@ -27,6 +27,7 @@ const trustedOrigins = allowedOrigins.flatMap((origin) => {
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL,
   basePath: '/auth',
+  secret: process.env.BETTER_AUTH_SECRET,
   trustedOrigins,
   advanced: {
     useSecureCookies: isProduction,

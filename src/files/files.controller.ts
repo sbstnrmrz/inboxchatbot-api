@@ -52,8 +52,8 @@ export class FilesController {
 
     const file = this.filesService.getLocalFile(
       tenantId,
-      channel,
-      mediaType,
+      channel.toLowerCase(),
+      mediaType.toLowerCase(),
       mediaId,
     );
 

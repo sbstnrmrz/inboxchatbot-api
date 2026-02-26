@@ -46,9 +46,8 @@ function isOriginAllowed(origin: string): boolean {
         .split(',')
         .map((o) => o.trim())
         .filter(Boolean);
-      Logger.debug(
-        `WebSocket CORS check — origin: ${origin} | allowed: [${allowedOrigins.join(', ')}]`,
-        'ChatGateway',
+      console.log(
+        `[ChatGateway] WebSocket CORS check — origin: ${origin} | allowed: [${allowedOrigins.join(', ')}]`,
       );
       if (isOriginAllowed(origin)) {
         callback(null, true);

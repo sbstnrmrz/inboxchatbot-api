@@ -364,7 +364,9 @@ export class MessagesService {
           : undefined;
 
         // ── 4. Persist message ──────────────────────────────────────────────
-        const sentAt = new Date(event.timestamp * 1000);
+        const rawTimestamp = event.timestamp;
+        const timestampInMs = rawTimestamp < 10000000000 ? rawTimestamp * 1000 : rawTimestamp;
+        const sentAt = new Date(timestampInMs);
 
         const message = await this.messageModel.create({
           tenantId: tenantObjectId,

@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Param,
   Query,
   Request,
   UnauthorizedException,
@@ -39,6 +40,24 @@ export class CustomersController {
     }
 
     return this.customersService.findAll(req.tenantId, dto);
+  }
+
+  /**
+   * Returns a single customer by ID for the current tenant.
+   * Throws 404 if the customer does not exist or belongs to a different tenant.
+   *
+   * GET /customers/:id
+   */
+  @Get(':id')
+  async findById(
+    @Param('id') id: string,
+    @Request() req: ExpressRequest & { tenantId?: string },
+  ): Promise<CustomerDocument> {
+    if (!req.tenantId) {
+      throw new UnauthorizedException('Tenant not resolved');
+    }
+
+    return this.customersService.findById(req.tenantId, id);
   }
 
   /**

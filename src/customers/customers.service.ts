@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Customer, CustomerDocument } from './schemas/customer.schema.js';
@@ -29,6 +29,29 @@ export class CustomersService {
     @InjectModel(Message.name)
     private readonly messageModel: Model<MessageDocument>,
   ) {}
+
+  /**
+   * Returns a single customer by ID scoped to the tenant.
+   * Throws NotFoundException if the customer does not exist or belongs to a different tenant.
+   */
+  async findById(
+    tenantId: string,
+    customerId: string,
+  ): Promise<CustomerDocument> {
+    const tenantObjectId = new Types.ObjectId(tenantId);
+    const customerObjectId = new Types.ObjectId(customerId);
+
+    const customer = await this.customerModel
+      .findOne({ _id: customerObjectId, tenantId: tenantObjectId })
+      .lean()
+      .exec();
+
+    if (!customer) {
+      throw new NotFoundException(`Customer with id "${customerId}" not found`);
+    }
+
+    return customer as CustomerDocument;
+  }
 
   /**
    * Returns a paginated list of customers for a tenant, ordered by

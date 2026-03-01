@@ -29,6 +29,7 @@ import { SendMessageDto } from './dto/send-message.dto.js';
 import { WhatsAppSendMessageResponseDto } from './dto/whatsapp/whatsapp-send-message-response.dto.js';
 import { ChatGateway } from '../chat/chat.gateway.js';
 import { MessageEvent } from '../chat/enums/message-events.enum.js';
+import { ConversationEvent } from '../chat/enums/conversation-events.enum.js';
 import { TenantsService } from '../tenants/tenants.service.js';
 import {
   BotResponseDto,
@@ -365,7 +366,8 @@ export class MessagesService {
 
         // ── 4. Persist message ──────────────────────────────────────────────
         const rawTimestamp = event.timestamp;
-        const timestampInMs = rawTimestamp < 10000000000 ? rawTimestamp * 1000 : rawTimestamp;
+        const timestampInMs =
+          rawTimestamp < 10000000000 ? rawTimestamp * 1000 : rawTimestamp;
         const sentAt = new Date(timestampInMs);
 
         const message = await this.messageModel.create({
@@ -660,7 +662,10 @@ export class MessagesService {
     return response.json() as Promise<{ message_id: string }>;
   }
 
-  async processBotResponse(dto: BotResponseDto): Promise<MessageDocument> {
+  async processBotResponse(
+    dto: BotResponseDto,
+    requestAgent?: boolean,
+  ): Promise<MessageDocument> {
     // ── 1. Resolve tenantId (accepts slug or ObjectId) ────────────────────
     const resolvedTenantId = await this.tenantsService.resolveId(dto.tenantId);
     const tenantObjectId = new Types.ObjectId(resolvedTenantId);
@@ -784,6 +789,18 @@ export class MessagesService {
 
     // ── 9. Emit real-time event ───────────────────────────────────────────
     this.chatGateway.emitToTenant(resolvedTenantId, MessageEvent.Sent, message);
+
+    // ── 10. Handle request_agent flag ─────────────────────────────────────
+    if (requestAgent) {
+      await this.conversationModel.findByIdAndUpdate(conversationObjectId, {
+        requestingAgent: true,
+      });
+      this.chatGateway.emitToTenant(
+        resolvedTenantId,
+        ConversationEvent.RequestAgent,
+        { conversationId: conversationObjectId },
+      );
+    }
 
     return message;
   }

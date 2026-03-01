@@ -66,6 +66,9 @@ export class MessagesController {
     this.logger.debug(
       `[bot-response] query params: ${JSON.stringify({ request_agent: requestAgent })}`,
     );
-    return this.messagesService.processBotResponse(dto);
+    return this.messagesService.processBotResponse(
+      dto,
+      requestAgent === 'true',
+    );
   }
 }

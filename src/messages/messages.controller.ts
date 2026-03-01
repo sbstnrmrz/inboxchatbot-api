@@ -5,7 +5,9 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Logger,
   Post,
+  Query,
 } from '@nestjs/common';
 import { MessagesService } from './messages.service.js';
 import { BotResponseDto } from './dto/bot-response.dto.js';
@@ -18,6 +20,8 @@ import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
 
 @Controller('messages')
 export class MessagesController {
+  private readonly logger = new Logger(MessagesController.name);
+
   constructor(private readonly messagesService: MessagesService) {}
 
   /**
@@ -55,7 +59,13 @@ export class MessagesController {
   @Post('bot-response')
   @HttpCode(HttpStatus.CREATED)
   @AllowAnonymous()
-  async botResponse(@Body() dto: BotResponseDto): Promise<MessageDocument> {
+  async botResponse(
+    @Body() dto: BotResponseDto,
+    @Query('request_agent') requestAgent?: string,
+  ): Promise<MessageDocument> {
+    this.logger.debug(
+      `[bot-response] query params: ${JSON.stringify({ request_agent: requestAgent })}`,
+    );
     return this.messagesService.processBotResponse(dto);
   }
 }

@@ -673,11 +673,12 @@ export class MessagesService {
     this.logger.debug(dto);
 
     // ── 2. Validate tenant exists ─────────────────────────────────────────
-    const tenantExists = await this.tenantModel
-      .exists({ _id: tenantObjectId })
+    const tenant = await this.tenantModel
+      .findById(tenantObjectId)
+      .lean()
       .exec();
 
-    if (!tenantExists) {
+    if (!tenant) {
       throw new Error(`Tenant ${dto.tenantId} not found`);
     }
 
@@ -699,7 +700,7 @@ export class MessagesService {
       customerCreateData = {
         tenantId: tenantObjectId,
         name: recipientId,
-        instagramInfo: { accountId: recipientId, name: recipientId },
+        instagramInfo: { accountId: recipientId },
       };
     } else {
       recipientId = dto.metaResponse.contacts?.[0]?.wa_id ?? '';
@@ -726,6 +727,33 @@ export class MessagesService {
       this.logger.log(
         `Customer not found for recipientId=${recipientId} (${channel}), creating new customer`,
       );
+
+      if (
+        isInstagramMetaResponse(dto.metaResponse) &&
+        tenant.instagramInfo?.accessToken
+      ) {
+        const profile = await this.getInstagramUserProfile(
+          recipientId,
+          tenant.instagramInfo.accessToken,
+        ).catch((err: unknown) => {
+          this.logger.warn(
+            `[IG] Could not fetch profile for ig_scoped_id=${recipientId}: ${(err as Error).message}`,
+          );
+          return null;
+        });
+
+        customerCreateData = {
+          tenantId: tenantObjectId,
+          name: profile?.name ?? profile?.username ?? recipientId,
+          instagramInfo: {
+            accountId: recipientId,
+            name: profile?.name,
+            username: profile?.username,
+            profilePic: profile?.profile_pic,
+          },
+        };
+      }
+
       customer = await this.customerModel.create(customerCreateData);
     }
 

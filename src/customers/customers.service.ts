@@ -11,6 +11,8 @@ import {
   MessageDocument,
 } from '../messages/schemas/message.schema.js';
 import { FindCustomersDto } from './dto/find-customers.dto.js';
+import { ChatGateway } from '../chat/chat.gateway.js';
+import { CustomerEvent } from '../chat/enums/customer-events.enum.js';
 
 export type CustomerWithMessageCount = CustomerDocument & {
   conversationId: Types.ObjectId | null;
@@ -28,6 +30,7 @@ export class CustomersService {
     private readonly conversationModel: Model<ConversationDocument>,
     @InjectModel(Message.name)
     private readonly messageModel: Model<MessageDocument>,
+    private readonly chatGateway: ChatGateway,
   ) {}
 
   /**
@@ -185,5 +188,67 @@ export class CustomersService {
       ]);
 
     return results;
+  }
+
+  /**
+   * Sets isBlocked = true on the customer and emits a customer_blocked event.
+   * Throws NotFoundException if the customer does not exist or belongs to a different tenant.
+   */
+  async blockCustomer(
+    tenantId: string,
+    customerId: string,
+  ): Promise<CustomerDocument> {
+    const tenantObjectId = new Types.ObjectId(tenantId);
+    const customerObjectId = new Types.ObjectId(customerId);
+
+    const customer = await this.customerModel
+      .findOneAndUpdate(
+        { _id: customerObjectId, tenantId: tenantObjectId },
+        { isBlocked: true },
+        { new: true },
+      )
+      .lean()
+      .exec();
+
+    if (!customer) {
+      throw new NotFoundException(`Customer with id "${customerId}" not found`);
+    }
+
+    this.chatGateway.emitToTenant(tenantId, CustomerEvent.Blocked, {
+      customerId: customerObjectId,
+    });
+
+    return customer as CustomerDocument;
+  }
+
+  /**
+   * Sets isBlocked = false on the customer and emits a customer_unblocked event.
+   * Throws NotFoundException if the customer does not exist or belongs to a different tenant.
+   */
+  async unblockCustomer(
+    tenantId: string,
+    customerId: string,
+  ): Promise<CustomerDocument> {
+    const tenantObjectId = new Types.ObjectId(tenantId);
+    const customerObjectId = new Types.ObjectId(customerId);
+
+    const customer = await this.customerModel
+      .findOneAndUpdate(
+        { _id: customerObjectId, tenantId: tenantObjectId },
+        { isBlocked: false },
+        { new: true },
+      )
+      .lean()
+      .exec();
+
+    if (!customer) {
+      throw new NotFoundException(`Customer with id "${customerId}" not found`);
+    }
+
+    this.chatGateway.emitToTenant(tenantId, CustomerEvent.Unblocked, {
+      customerId: customerObjectId,
+    });
+
+    return customer as CustomerDocument;
   }
 }

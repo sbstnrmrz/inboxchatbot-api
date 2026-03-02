@@ -1,7 +1,10 @@
 import {
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
+  Patch,
   Query,
   Request,
   UnauthorizedException,
@@ -60,6 +63,44 @@ export class CustomersController {
     }
 
     return this.customersService.findAllWithMessageCount(req.tenantId, dto);
+  }
+
+  /**
+   * Blocks a customer, setting isBlocked = true.
+   * Emits a customer_blocked socket event to the tenant room.
+   *
+   * PATCH /customers/:id/block
+   */
+  @Patch(':id/block')
+  @HttpCode(HttpStatus.OK)
+  async blockCustomer(
+    @Param('id') id: string,
+    @Request() req: ExpressRequest & { tenantId?: string },
+  ): Promise<CustomerDocument> {
+    if (!req.tenantId) {
+      throw new UnauthorizedException('Tenant not resolved');
+    }
+
+    return this.customersService.blockCustomer(req.tenantId, id);
+  }
+
+  /**
+   * Unblocks a customer, setting isBlocked = false.
+   * Emits a customer_unblocked socket event to the tenant room.
+   *
+   * PATCH /customers/:id/unblock
+   */
+  @Patch(':id/unblock')
+  @HttpCode(HttpStatus.OK)
+  async unblockCustomer(
+    @Param('id') id: string,
+    @Request() req: ExpressRequest & { tenantId?: string },
+  ): Promise<CustomerDocument> {
+    if (!req.tenantId) {
+      throw new UnauthorizedException('Tenant not resolved');
+    }
+
+    return this.customersService.unblockCustomer(req.tenantId, id);
   }
 
   /**

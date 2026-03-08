@@ -130,6 +130,34 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  @SubscribeMessage(ConversationEvent.DismissAgent)
+  @UseGuards(SocketAuthGuard)
+  async handleDismissAgent(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { conversationId: string },
+  ): Promise<void> {
+    const tenantId = client.data.session?.user?.tenantId as string | undefined;
+
+    if (!tenantId) {
+      this.logger.warn(`No tenantId for client ${client.id}, disconnecting`);
+      client.disconnect();
+      return;
+    }
+
+    try {
+      const payload = await this.conversationsService.dismissAgent(
+        tenantId,
+        data.conversationId,
+      );
+
+      this.emitToTenant(tenantId, ConversationEvent.DismissAgent, payload);
+    } catch (error) {
+      this.logger.error(
+        `Failed to dismiss agent for conversation ${data.conversationId}: ${(error as Error).message}`,
+      );
+    }
+  }
+
   @SubscribeMessage(ConversationEvent.Read)
   @UseGuards(SocketAuthGuard)
   async handleConversationRead(

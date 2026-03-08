@@ -22,12 +22,15 @@ import {
 import { MessagesService } from '../messages/messages.service.js';
 import { FindMessagesDto } from '../messages/dto/find-messages.dto.js';
 import { MessageDocument } from '../messages/schemas/message.schema.js';
+import { ChatGateway } from '../chat/chat.gateway.js';
+import { ConversationEvent } from '../chat/enums/conversation-events.enum.js';
 
 @Controller('conversations')
 export class ConversationsController {
   constructor(
     private readonly conversationsService: ConversationsService,
     private readonly messagesService: MessagesService,
+    private readonly chatGateway: ChatGateway,
   ) {}
 
   @Post()
@@ -102,6 +105,33 @@ export class ConversationsController {
     }
 
     return this.conversationsService.toggleBot(req.tenantId, id);
+  }
+
+  /**
+   * Clears the agent request flag on a conversation, setting requestingAgent = false.
+   * Emits a dismiss_agent socket event to the tenant room.
+   *
+   * PATCH /conversations/:id/dismiss-agent
+   */
+  @Patch(':id/dismiss-agent')
+  async dismissAgent(
+    @Param('id') id: string,
+    @Request() req: ExpressRequest & { tenantId?: string },
+  ): Promise<{ conversationId: string }> {
+    if (!req.tenantId) {
+      throw new UnauthorizedException('Tenant not resolved');
+    }
+
+    const payload = await this.conversationsService.dismissAgent(
+      req.tenantId,
+      id,
+    );
+    this.chatGateway.emitToTenant(
+      req.tenantId,
+      ConversationEvent.DismissAgent,
+      payload,
+    );
+    return payload;
   }
 
   @Get(':conversationId/messages')

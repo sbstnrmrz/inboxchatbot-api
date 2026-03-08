@@ -124,6 +124,36 @@ export class ConversationsService {
     };
   }
 
+  /**
+   * Sets requestingAgent = false on the conversation and emits a dismiss_agent event.
+   * Throws NotFoundException if the conversation does not exist or belongs to a different tenant.
+   */
+  async dismissAgent(
+    tenantId: string,
+    conversationId: string,
+  ): Promise<{ conversationId: string }> {
+    const tenantObjectId = new Types.ObjectId(tenantId);
+    const conversationObjectId = new Types.ObjectId(conversationId);
+
+    const updated = await this.conversationModel
+      .findOneAndUpdate(
+        { _id: conversationObjectId, tenantId: tenantObjectId },
+        { requestingAgent: false },
+        { new: true },
+      )
+      .select('_id')
+      .lean()
+      .exec();
+
+    if (!updated) {
+      throw new NotFoundException(
+        `Conversation ${conversationId} not found for tenant ${tenantId}`,
+      );
+    }
+
+    return { conversationId };
+  }
+
   create(createConversationDto: CreateConversationDto) {
     return 'This action adds a new conversation';
   }

@@ -10,8 +10,8 @@ export class InstagramInfoDto {
   accountId: string;
 
   @IsString()
-  @IsNotEmpty()
-  pageId: string;
+  @IsOptional()
+  pageId?: string;
 
   @IsString()
   @IsNotEmpty()

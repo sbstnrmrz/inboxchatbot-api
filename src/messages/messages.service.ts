@@ -116,6 +116,24 @@ export class MessagesService {
       .lean()
       .exec();
 
+    if (!tenant) {
+      this.logger.warn(`[WA] Tenant ${tenantId} not found, skipping webhook`);
+      return [];
+    }
+
+    // Guard: verify the webhook phone_number_id matches this tenant's config
+    const incomingPhoneNumberId = payload.metadata?.phone_number_id;
+    if (
+      tenant.whatsappInfo?.phoneNumberId &&
+      incomingPhoneNumberId &&
+      incomingPhoneNumberId !== tenant.whatsappInfo.phoneNumberId
+    ) {
+      this.logger.warn(
+        `[WA] Webhook phone_number_id=${incomingPhoneNumberId} does not match tenant ${tenantId} phoneNumberId=${tenant.whatsappInfo.phoneNumberId} — skipping`,
+      );
+      return [];
+    }
+
     for (const waMessage of messages) {
       const contact = contacts?.find((c) => c.wa_id === waMessage.from);
       const displayName = contact?.profile?.name ?? waMessage.from;
@@ -271,8 +289,24 @@ export class MessagesService {
       .lean()
       .exec();
 
+    if (!tenant) {
+      this.logger.warn(`[IG] Tenant ${tenantId} not found, skipping webhook`);
+      return [];
+    }
+
     for (const entry of payload.entry) {
       if (!entry.messaging?.length) continue;
+
+      // Guard: verify the entry recipient matches this tenant's Instagram account
+      if (
+        tenant.instagramInfo?.accountId &&
+        entry.id !== tenant.instagramInfo.accountId
+      ) {
+        this.logger.warn(
+          `[IG] Webhook entry.id=${entry.id} does not match tenant ${tenantId} accountId=${tenant.instagramInfo.accountId} — skipping`,
+        );
+        continue;
+      }
 
       for (const event of entry.messaging) {
         // Only process actual messages — skip reads, reactions, postbacks

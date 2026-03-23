@@ -19,7 +19,7 @@ export interface WhatsAppInfo {
 export interface InstagramInfo {
   accessToken: string;
   accountId: string;
-  pageId: string;
+  pageId?: string;
   appSecret: string;
   isActive?: boolean;
   lastSyncedAt?: Date;

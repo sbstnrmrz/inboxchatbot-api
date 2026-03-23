@@ -73,7 +73,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private readonly logger = new Logger(ChatGateway.name);
 
-  @SubscribeMessage(SocketEvent.Connect)
   async handleConnection(client: Socket) {
     this.logger.debug('Socket client trying to connect');
     try {

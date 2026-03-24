@@ -24,6 +24,7 @@ import { FindMessagesDto } from '../messages/dto/find-messages.dto.js';
 import { MessageDocument } from '../messages/schemas/message.schema.js';
 import { ChatGateway } from '../chat/chat.gateway.js';
 import { ConversationEvent } from '../chat/enums/conversation-events.enum.js';
+import { TagEvent } from '../chat/enums/tag-events.enum.js';
 
 @Controller('conversations')
 export class ConversationsController {
@@ -129,6 +130,60 @@ export class ConversationsController {
     this.chatGateway.emitToTenant(
       req.tenantId,
       ConversationEvent.DismissAgent,
+      payload,
+    );
+    return payload;
+  }
+
+  /**
+   * Adds a tag to a conversation.
+   * POST /conversations/:id/tags/:tagId
+   */
+  @Post(':id/tags/:tagId')
+  async addTag(
+    @Param('id') id: string,
+    @Param('tagId') tagId: string,
+    @Request() req: ExpressRequest & { tenantId?: string },
+  ): Promise<{ conversationId: string; tags: string[] }> {
+    if (!req.tenantId) {
+      throw new UnauthorizedException('Tenant not resolved');
+    }
+
+    const payload = await this.conversationsService.addTag(
+      req.tenantId,
+      id,
+      tagId,
+    );
+    this.chatGateway.emitToTenant(
+      req.tenantId,
+      TagEvent.AddedToConversation,
+      payload,
+    );
+    return payload;
+  }
+
+  /**
+   * Removes a tag from a conversation.
+   * DELETE /conversations/:id/tags/:tagId
+   */
+  @Delete(':id/tags/:tagId')
+  async removeTag(
+    @Param('id') id: string,
+    @Param('tagId') tagId: string,
+    @Request() req: ExpressRequest & { tenantId?: string },
+  ): Promise<{ conversationId: string; tags: string[] }> {
+    if (!req.tenantId) {
+      throw new UnauthorizedException('Tenant not resolved');
+    }
+
+    const payload = await this.conversationsService.removeTag(
+      req.tenantId,
+      id,
+      tagId,
+    );
+    this.chatGateway.emitToTenant(
+      req.tenantId,
+      TagEvent.RemovedFromConversation,
       payload,
     );
     return payload;

@@ -154,6 +154,76 @@ export class ConversationsService {
     return { conversationId };
   }
 
+  /**
+   * Adds a tag to a conversation (idempotent via $addToSet).
+   * Returns the updated tags array.
+   */
+  async addTag(
+    tenantId: string,
+    conversationId: string,
+    tagId: string,
+  ): Promise<{ conversationId: string; tags: string[] }> {
+    const tenantObjectId = new Types.ObjectId(tenantId);
+    const conversationObjectId = new Types.ObjectId(conversationId);
+    const tagObjectId = new Types.ObjectId(tagId);
+
+    const updated = await this.conversationModel
+      .findOneAndUpdate(
+        { _id: conversationObjectId, tenantId: tenantObjectId },
+        { $addToSet: { tags: tagObjectId } },
+        { new: true },
+      )
+      .select('tags')
+      .lean()
+      .exec();
+
+    if (!updated) {
+      throw new NotFoundException(
+        `Conversation ${conversationId} not found for tenant ${tenantId}`,
+      );
+    }
+
+    return {
+      conversationId,
+      tags: (updated.tags as Types.ObjectId[]).map((id) => id.toString()),
+    };
+  }
+
+  /**
+   * Removes a tag from a conversation.
+   * Returns the updated tags array.
+   */
+  async removeTag(
+    tenantId: string,
+    conversationId: string,
+    tagId: string,
+  ): Promise<{ conversationId: string; tags: string[] }> {
+    const tenantObjectId = new Types.ObjectId(tenantId);
+    const conversationObjectId = new Types.ObjectId(conversationId);
+    const tagObjectId = new Types.ObjectId(tagId);
+
+    const updated = await this.conversationModel
+      .findOneAndUpdate(
+        { _id: conversationObjectId, tenantId: tenantObjectId },
+        { $pull: { tags: tagObjectId } },
+        { new: true },
+      )
+      .select('tags')
+      .lean()
+      .exec();
+
+    if (!updated) {
+      throw new NotFoundException(
+        `Conversation ${conversationId} not found for tenant ${tenantId}`,
+      );
+    }
+
+    return {
+      conversationId,
+      tags: (updated.tags as Types.ObjectId[]).map((id) => id.toString()),
+    };
+  }
+
   create(createConversationDto: CreateConversationDto) {
     return 'This action adds a new conversation';
   }

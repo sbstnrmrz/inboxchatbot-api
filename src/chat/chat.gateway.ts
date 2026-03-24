@@ -16,6 +16,7 @@ import { TenantsService } from '../tenants/tenants.service.js';
 import { ConversationsService } from '../conversations/conversations.service.js';
 import { ConversationEvent } from './enums/conversation-events.enum.js';
 import { CustomerEvent } from './enums/customer-events.enum.js';
+import { TagEvent } from './enums/tag-events.enum.js';
 import { MessagesService } from '../messages/messages.service.js';
 import { SendMessageDto } from '../messages/dto/send-message.dto.js';
 
@@ -191,7 +192,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
    */
   emitToTenant(
     tenantId: string,
-    event: MessageEvent | ConversationEvent | CustomerEvent,
+    event: MessageEvent | ConversationEvent | CustomerEvent | TagEvent,
     data: unknown,
   ): void {
     this.server.to(tenantId).emit(event, data);

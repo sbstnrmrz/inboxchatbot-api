@@ -58,6 +58,9 @@ export class Conversation {
   @Prop({ type: Date })
   readAt?: Date;
 
+  @Prop({ type: [{ type: Types.ObjectId, ref: 'Tag' }], default: [] })
+  tags: Types.ObjectId[];
+
   createdAt?: Date;
   updatedAt?: Date;
 }

@@ -15,6 +15,7 @@ import { ConversationsModule } from './conversations/conversations.module';
 import { CustomersModule } from './customers/customers.module';
 import { MessagesModule } from './messages/messages.module';
 import { FilesModule } from './files/files.module';
+import { TagsModule } from './tags/tags.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { FilesModule } from './files/files.module';
     CustomersModule,
     MessagesModule,
     FilesModule,
+    TagsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

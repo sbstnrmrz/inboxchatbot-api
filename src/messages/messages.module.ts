@@ -15,12 +15,14 @@ import { MessagesController } from './messages.controller.js';
 import { ChatModule } from '../chat/chat.module.js';
 import { TenantsModule } from '../tenants/tenants.module.js';
 import { FilesModule } from '../files/files.module.js';
+import { TagsModule } from '../tags/tags.module.js';
 
 @Module({
   imports: [
     forwardRef(() => ChatModule),
     TenantsModule,
     FilesModule,
+    forwardRef(() => TagsModule),
     MongooseModule.forFeature([
       { name: Message.name, schema: MessageSchema },
       { name: Customer.name, schema: CustomerSchema },

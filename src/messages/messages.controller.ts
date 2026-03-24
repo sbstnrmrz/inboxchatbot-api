@@ -62,13 +62,24 @@ export class MessagesController {
   async botResponse(
     @Body() dto: BotResponseDto,
     @Query('request_agent') requestAgent?: string,
+    @Query('add_tags') addTagsParam?: string,
+    @Query('remove_tags') removeTagsParam?: string,
   ): Promise<MessageDocument> {
+    const addTags = addTagsParam
+      ? addTagsParam.split(',').map((t) => t.trim()).filter(Boolean)
+      : undefined;
+    const removeTags = removeTagsParam
+      ? removeTagsParam.split(',').map((t) => t.trim()).filter(Boolean)
+      : undefined;
+
     this.logger.debug(
-      `[bot-response] query params: ${JSON.stringify({ request_agent: requestAgent })}`,
+      `[bot-response] query params: ${JSON.stringify({ request_agent: requestAgent, add_tags: addTags, remove_tags: removeTags })}`,
     );
     return this.messagesService.processBotResponse(
       dto,
       requestAgent === 'true',
+      addTags,
+      removeTags,
     );
   }
 }

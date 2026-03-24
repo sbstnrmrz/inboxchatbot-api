@@ -92,6 +92,29 @@ export class TagsService {
     return updated as TagDocument;
   }
 
+  async findOrCreateByNames(
+    tenantId: string,
+    names: string[],
+  ): Promise<Types.ObjectId[]> {
+    const tenantObjectId = new Types.ObjectId(tenantId);
+    const ids: Types.ObjectId[] = [];
+
+    for (const name of names) {
+      const tag = await this.tagModel
+        .findOneAndUpdate(
+          { tenantId: tenantObjectId, name },
+          { $setOnInsert: { tenantId: tenantObjectId, name, color: '#6B7280' } },
+          { upsert: true, new: true },
+        )
+        .lean()
+        .exec();
+
+      ids.push((tag as TagDocument)._id as Types.ObjectId);
+    }
+
+    return ids;
+  }
+
   async remove(tenantId: string, tagId: string): Promise<{ tagId: string }> {
     const tenantObjectId = new Types.ObjectId(tenantId);
     const tagObjectId = new Types.ObjectId(tagId);

@@ -38,6 +38,7 @@ import {
 import { InstagramUserProfileDto } from './dto/instagram/instagram-user-profile.dto.js';
 import { FilesService } from '../files/files.service.js';
 import { FindMessagesDto } from './dto/find-messages.dto.js';
+import { TagsService } from '../tags/tags.service.js';
 
 @Injectable()
 export class MessagesService {
@@ -56,6 +57,7 @@ export class MessagesService {
     private readonly chatGateway: ChatGateway,
     private readonly tenantsService: TenantsService,
     private readonly filesService: FilesService,
+    private readonly tagsService: TagsService,
   ) {}
 
   /**
@@ -699,6 +701,8 @@ export class MessagesService {
   async processBotResponse(
     dto: BotResponseDto,
     requestAgent?: boolean,
+    addTags?: string[],
+    removeTags?: string[],
   ): Promise<MessageDocument> {
     // ── 1. Resolve tenantId (accepts slug or ObjectId) ────────────────────
     const resolvedTenantId = await this.tenantsService.resolveId(dto.tenantId);
@@ -862,6 +866,28 @@ export class MessagesService {
         ConversationEvent.RequestAgent,
         { conversationId: conversationObjectId },
       );
+    }
+
+    // ── 11. Handle add_tags ───────────────────────────────────────────────
+    if (addTags && addTags.length > 0) {
+      const tagIds = await this.tagsService.findOrCreateByNames(
+        resolvedTenantId,
+        addTags,
+      );
+      await this.conversationModel.findByIdAndUpdate(conversationObjectId, {
+        $addToSet: { tags: { $each: tagIds } },
+      });
+    }
+
+    // ── 12. Handle remove_tags ────────────────────────────────────────────
+    if (removeTags && removeTags.length > 0) {
+      const tagIds = await this.tagsService.findOrCreateByNames(
+        resolvedTenantId,
+        removeTags,
+      );
+      await this.conversationModel.findByIdAndUpdate(conversationObjectId, {
+        $pullAll: { tags: tagIds },
+      });
     }
 
     return message;

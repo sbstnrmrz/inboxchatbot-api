@@ -30,6 +30,7 @@ import { WhatsAppSendMessageResponseDto } from './dto/whatsapp/whatsapp-send-mes
 import { ChatGateway } from '../chat/chat.gateway.js';
 import { MessageEvent } from '../chat/enums/message-events.enum.js';
 import { ConversationEvent } from '../chat/enums/conversation-events.enum.js';
+import { TagEvent } from '../chat/enums/tag-events.enum.js';
 import { TenantsService } from '../tenants/tenants.service.js';
 import {
   BotResponseDto,
@@ -874,9 +875,21 @@ export class MessagesService {
         resolvedTenantId,
         addTags,
       );
-      await this.conversationModel.findByIdAndUpdate(conversationObjectId, {
-        $addToSet: { tags: { $each: tagIds } },
-      });
+      const updated = await this.conversationModel
+        .findByIdAndUpdate(
+          conversationObjectId,
+          { $addToSet: { tags: { $each: tagIds } } },
+          { new: true },
+        )
+        .select('tags')
+        .lean()
+        .exec();
+      if (updated) {
+        this.chatGateway.emitToTenant(resolvedTenantId, TagEvent.AddedToConversation, {
+          conversationId: conversationObjectId.toString(),
+          tags: (updated.tags as Types.ObjectId[]).map((id) => id.toString()),
+        });
+      }
     }
 
     // ── 12. Handle remove_tags ────────────────────────────────────────────
@@ -885,9 +898,21 @@ export class MessagesService {
         resolvedTenantId,
         removeTags,
       );
-      await this.conversationModel.findByIdAndUpdate(conversationObjectId, {
-        $pullAll: { tags: tagIds },
-      });
+      const updated = await this.conversationModel
+        .findByIdAndUpdate(
+          conversationObjectId,
+          { $pullAll: { tags: tagIds } },
+          { new: true },
+        )
+        .select('tags')
+        .lean()
+        .exec();
+      if (updated) {
+        this.chatGateway.emitToTenant(resolvedTenantId, TagEvent.RemovedFromConversation, {
+          conversationId: conversationObjectId.toString(),
+          tags: (updated.tags as Types.ObjectId[]).map((id) => id.toString()),
+        });
+      }
     }
 
     return message;

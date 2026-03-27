@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -15,6 +16,7 @@ import {
   CustomerWithMessageCount,
 } from './customers.service.js';
 import { FindCustomersDto } from './dto/find-customers.dto.js';
+import { AddEmailDto } from './dto/add-email.dto.js';
 import { CustomerDocument } from './schemas/customer.schema.js';
 
 @Controller('customers')
@@ -63,6 +65,25 @@ export class CustomersController {
     }
 
     return this.customersService.findAllWithMessageCount(req.tenantId, dto);
+  }
+
+  /**
+   * Adds or updates the email of a customer found by their WhatsApp id or Instagram accountId.
+   *
+   * PATCH /customers/:id/add-email
+   */
+  @Patch(':id/add-email')
+  @HttpCode(HttpStatus.OK)
+  async addEmail(
+    @Param('id') id: string,
+    @Body() dto: AddEmailDto,
+    @Request() req: ExpressRequest & { tenantId?: string },
+  ): Promise<CustomerDocument> {
+    if (!req.tenantId) {
+      throw new UnauthorizedException('Tenant not resolved');
+    }
+
+    return this.customersService.addEmail(req.tenantId, id, dto.email);
   }
 
   /**

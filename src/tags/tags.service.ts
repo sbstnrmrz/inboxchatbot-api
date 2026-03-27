@@ -94,16 +94,20 @@ export class TagsService {
 
   async findOrCreateByNames(
     tenantId: string,
-    names: string[],
+    tags: { name: string; color?: string }[],
   ): Promise<Types.ObjectId[]> {
     const tenantObjectId = new Types.ObjectId(tenantId);
     const ids: Types.ObjectId[] = [];
+    const validHexColor = /^#[0-9a-fA-F]{6}$/;
+    const defaultColor = '#6B7280';
 
-    for (const name of names) {
+    for (const { name, color } of tags) {
+      const resolvedColor =
+        color && validHexColor.test(color) ? color : defaultColor;
       const tag = await this.tagModel
         .findOneAndUpdate(
           { tenantId: tenantObjectId, name },
-          { $setOnInsert: { tenantId: tenantObjectId, name, color: '#6B7280' } },
+          { $setOnInsert: { tenantId: tenantObjectId, name, color: resolvedColor } },
           { upsert: true, new: true },
         )
         .lean()

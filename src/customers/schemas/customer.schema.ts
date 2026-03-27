@@ -29,6 +29,9 @@ export class Customer {
   @Prop({ type: Object })
   instagramInfo?: CustomerInstagramInfo;
 
+  @Prop({ type: String, trim: true })
+  email?: string;
+
   @Prop({ type: Boolean, default: false })
   isBlocked: boolean;
 

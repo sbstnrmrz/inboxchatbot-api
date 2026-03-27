@@ -191,6 +191,41 @@ export class CustomersService {
   }
 
   /**
+   * Sets email on a customer found by their WhatsApp id or Instagram accountId.
+   * Throws NotFoundException if no matching customer is found within the tenant.
+   */
+  async addEmail(
+    tenantId: string,
+    platformId: string,
+    email: string,
+  ): Promise<CustomerDocument> {
+    const tenantObjectId = new Types.ObjectId(tenantId);
+
+    const customer = await this.customerModel
+      .findOneAndUpdate(
+        {
+          tenantId: tenantObjectId,
+          $or: [
+            { 'whatsappInfo.id': platformId },
+            { 'instagramInfo.accountId': platformId },
+          ],
+        },
+        { email },
+        { new: true },
+      )
+      .lean()
+      .exec();
+
+    if (!customer) {
+      throw new NotFoundException(
+        `Customer with platform id "${platformId}" not found`,
+      );
+    }
+
+    return customer as CustomerDocument;
+  }
+
+  /**
    * Sets isBlocked = true on the customer and emits a customer_blocked event.
    * Throws NotFoundException if the customer does not exist or belongs to a different tenant.
    */

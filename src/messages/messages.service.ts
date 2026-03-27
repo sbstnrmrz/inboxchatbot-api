@@ -702,7 +702,7 @@ export class MessagesService {
   async processBotResponse(
     dto: BotResponseDto,
     requestAgent?: boolean,
-    addTags?: string[],
+    addTags?: { name: string; color?: string }[],
     removeTags?: string[],
   ): Promise<MessageDocument> {
     // ── 1. Resolve tenantId (accepts slug or ObjectId) ────────────────────
@@ -896,7 +896,7 @@ export class MessagesService {
     if (removeTags && removeTags.length > 0) {
       const tagIds = await this.tagsService.findOrCreateByNames(
         resolvedTenantId,
-        removeTags,
+        removeTags.map((name) => ({ name })),
       );
       const updated = await this.conversationModel
         .findByIdAndUpdate(

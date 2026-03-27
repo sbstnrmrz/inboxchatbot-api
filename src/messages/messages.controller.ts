@@ -66,7 +66,22 @@ export class MessagesController {
     @Query('remove_tags') removeTagsParam?: string,
   ): Promise<MessageDocument> {
     const addTags = addTagsParam
-      ? addTagsParam.split(',').map((t) => t.trim()).filter(Boolean)
+      ? addTagsParam
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean)
+          .map((t) => {
+            const dashIdx = t.lastIndexOf('-');
+            if (dashIdx !== -1) {
+              const colorPart = t.slice(dashIdx + 1);
+              const name = t.slice(0, dashIdx);
+              const color = /^[0-9a-fA-F]{6}$/.test(colorPart)
+                ? `#${colorPart}`
+                : undefined;
+              return { name, color };
+            }
+            return { name: t };
+          })
       : undefined;
     const removeTags = removeTagsParam
       ? removeTagsParam.split(',').map((t) => t.trim()).filter(Boolean)

@@ -64,6 +64,7 @@ export class MessagesController {
     @Query('request_agent') requestAgent?: string,
     @Query('add_tags') addTagsParam?: string,
     @Query('remove_tags') removeTagsParam?: string,
+    @Query('remove_all_tags') removeAllTagsParam?: string,
   ): Promise<MessageDocument> {
     const addTags = addTagsParam
       ? addTagsParam
@@ -87,14 +88,17 @@ export class MessagesController {
       ? removeTagsParam.split(',').map((t) => t.trim()).filter(Boolean)
       : undefined;
 
+    const removeAllTags = removeAllTagsParam === 'true';
+
     this.logger.debug(
-      `[bot-response] query params: ${JSON.stringify({ request_agent: requestAgent, add_tags: addTags, remove_tags: removeTags })}`,
+      `[bot-response] query params: ${JSON.stringify({ request_agent: requestAgent, add_tags: addTags, remove_tags: removeTags, remove_all_tags: removeAllTags })}`,
     );
     return this.messagesService.processBotResponse(
       dto,
       requestAgent === 'true',
       addTags,
       removeTags,
+      removeAllTags,
     );
   }
 }

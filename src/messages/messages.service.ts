@@ -704,6 +704,7 @@ export class MessagesService {
     requestAgent?: boolean,
     addTags?: { name: string; color?: string }[],
     removeTags?: string[],
+    removeAllTags?: boolean,
   ): Promise<MessageDocument> {
     // ── 1. Resolve tenantId (accepts slug or ObjectId) ────────────────────
     const resolvedTenantId = await this.tenantsService.resolveId(dto.tenantId);
@@ -869,7 +870,26 @@ export class MessagesService {
       );
     }
 
-    // ── 11. Handle add_tags ───────────────────────────────────────────────
+    // ── 11. Handle remove_all_tags ────────────────────────────────────────
+    if (removeAllTags) {
+      const updated = await this.conversationModel
+        .findByIdAndUpdate(
+          conversationObjectId,
+          { $set: { tags: [] } },
+          { new: true },
+        )
+        .select('tags')
+        .lean()
+        .exec();
+      if (updated) {
+        this.chatGateway.emitToTenant(resolvedTenantId, TagEvent.RemovedFromConversation, {
+          conversationId: conversationObjectId.toString(),
+          tags: [],
+        });
+      }
+    }
+
+    // ── 12. Handle add_tags ───────────────────────────────────────────────
     if (addTags && addTags.length > 0) {
       const tagIds = await this.tagsService.findOrCreateByNames(
         resolvedTenantId,

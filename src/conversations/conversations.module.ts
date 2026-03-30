@@ -6,6 +6,7 @@ import {
   Conversation,
   ConversationSchema,
 } from './schemas/conversation.schema.js';
+import { Customer, CustomerSchema } from '../customers/schemas/customer.schema.js';
 import { MessagesModule } from '../messages/messages.module.js';
 import { ChatModule } from '../chat/chat.module.js';
 
@@ -13,6 +14,7 @@ import { ChatModule } from '../chat/chat.module.js';
   imports: [
     MongooseModule.forFeature([
       { name: Conversation.name, schema: ConversationSchema },
+      { name: Customer.name, schema: CustomerSchema },
     ]),
     MessagesModule,
     forwardRef(() => ChatModule),

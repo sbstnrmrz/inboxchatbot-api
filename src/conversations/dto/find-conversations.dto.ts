@@ -3,6 +3,7 @@ import {
   IsISO8601,
   IsInt,
   IsOptional,
+  IsString,
   Max,
   Min,
 } from 'class-validator';
@@ -37,4 +38,9 @@ export class FindConversationsDto {
   @Min(1)
   @Max(100)
   limit?: number = 20;
+
+  /** Case-insensitive substring search on customer name. */
+  @IsOptional()
+  @IsString()
+  search?: string;
 }

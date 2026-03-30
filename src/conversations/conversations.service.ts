@@ -5,6 +5,7 @@ import {
   Conversation,
   ConversationDocument,
 } from './schemas/conversation.schema.js';
+import { Customer, CustomerDocument } from '../customers/schemas/customer.schema.js';
 import { CreateConversationDto } from './dto/create-conversation.dto.js';
 import { UpdateConversationDto } from './dto/update-conversation.dto.js';
 import { FindConversationsDto } from './dto/find-conversations.dto.js';
@@ -16,6 +17,8 @@ export class ConversationsService {
   constructor(
     @InjectModel(Conversation.name)
     private readonly conversationModel: Model<ConversationDocument>,
+    @InjectModel(Customer.name)
+    private readonly customerModel: Model<CustomerDocument>,
   ) {}
 
   /**
@@ -30,7 +33,7 @@ export class ConversationsService {
     tenantId: string,
     dto: FindConversationsDto,
   ): Promise<ConversationDocument[]> {
-    const { status, before, limit = 20 } = dto;
+    const { status, before, limit = 20, search } = dto;
     const tenantObjectId = new Types.ObjectId(tenantId);
 
     const filter: Record<string, unknown> = { tenantId: tenantObjectId };
@@ -41,6 +44,17 @@ export class ConversationsService {
 
     if (before) {
       filter['lastMessageAt'] = { $lt: new Date(before) };
+    }
+
+    if (search) {
+      const matchingCustomers = await this.customerModel
+        .find(
+          { tenantId: tenantObjectId, name: { $regex: search, $options: 'i' } },
+          { _id: 1 },
+        )
+        .lean()
+        .exec();
+      filter['customerId'] = { $in: matchingCustomers.map((c) => c._id) };
     }
 
     return this.conversationModel

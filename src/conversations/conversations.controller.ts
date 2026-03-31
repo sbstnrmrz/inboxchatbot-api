@@ -15,10 +15,8 @@ import { ConversationsService } from './conversations.service.js';
 import { CreateConversationDto } from './dto/create-conversation.dto.js';
 import { UpdateConversationDto } from './dto/update-conversation.dto.js';
 import { FindConversationsDto } from './dto/find-conversations.dto.js';
-import {
-  Conversation,
-  ConversationDocument,
-} from './schemas/conversation.schema.js';
+import { Conversation } from './schemas/conversation.schema.js';
+import { ConversationWithCustomer } from './conversations.service.js';
 import { MessagesService } from '../messages/messages.service.js';
 import { FindMessagesDto } from '../messages/dto/find-messages.dto.js';
 import { MessageDocument } from '../messages/schemas/message.schema.js';
@@ -55,7 +53,7 @@ export class ConversationsController {
   async findAll(
     @Query() dto: FindConversationsDto,
     @Request() req: ExpressRequest & { tenantId?: string },
-  ): Promise<ConversationDocument[]> {
+  ): Promise<ConversationWithCustomer[]> {
     if (!req.tenantId) {
       throw new UnauthorizedException('Tenant not resolved');
     }

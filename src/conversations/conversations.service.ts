@@ -6,6 +6,13 @@ import {
   ConversationDocument,
 } from './schemas/conversation.schema.js';
 import { Customer, CustomerDocument } from '../customers/schemas/customer.schema.js';
+
+export type ConversationWithCustomer = Omit<Conversation, 'customerId'> & {
+  _id: Types.ObjectId;
+  customer: Customer;
+  createdAt?: Date;
+  updatedAt?: Date;
+};
 import { CreateConversationDto } from './dto/create-conversation.dto.js';
 import { UpdateConversationDto } from './dto/update-conversation.dto.js';
 import { FindConversationsDto } from './dto/find-conversations.dto.js';
@@ -32,7 +39,7 @@ export class ConversationsService {
   async findAll(
     tenantId: string,
     dto: FindConversationsDto,
-  ): Promise<ConversationDocument[]> {
+  ): Promise<ConversationWithCustomer[]> {
     const { status, before, limit = 20, search } = dto;
     const tenantObjectId = new Types.ObjectId(tenantId);
 
@@ -57,13 +64,19 @@ export class ConversationsService {
       filter['customerId'] = { $in: matchingCustomers.map((c) => c._id) };
     }
 
-    return this.conversationModel
+    const conversations = await this.conversationModel
       .find(filter)
       .sort({ lastMessageAt: -1 })
       .limit(limit)
       .populate('lastMessage')
+      .populate('customerId')
       .lean()
-      .exec() as Promise<ConversationDocument[]>;
+      .exec();
+
+    return conversations.map(({ customerId, ...rest }) => ({
+      ...rest,
+      customer: customerId as unknown as Customer,
+    })) as ConversationWithCustomer[];
   }
 
   /**

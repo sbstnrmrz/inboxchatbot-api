@@ -11,6 +11,7 @@ import {
   MessageDocument,
 } from '../messages/schemas/message.schema.js';
 import { FindCustomersDto } from './dto/find-customers.dto.js';
+import { CountMessagesDto } from '../messages/dto/count-messages.dto.js';
 import { ChatGateway } from '../chat/chat.gateway.js';
 import { CustomerEvent } from '../chat/enums/customer-events.enum.js';
 
@@ -32,6 +33,30 @@ export class CustomersService {
     private readonly messageModel: Model<MessageDocument>,
     private readonly chatGateway: ChatGateway,
   ) {}
+
+  async count(tenantId: string, dto: CountMessagesDto = {}): Promise<number> {
+    const tenantObjectId = new Types.ObjectId(tenantId);
+    const filter: Record<string, unknown> = { tenantId: tenantObjectId };
+
+    if (dto.date) {
+      const start = new Date(dto.date);
+      start.setUTCHours(0, 0, 0, 0);
+      const end = new Date(dto.date);
+      end.setUTCHours(23, 59, 59, 999);
+      filter['createdAt'] = { $gte: start, $lte: end };
+    } else if (dto.from || dto.to) {
+      const range: Record<string, Date> = {};
+      if (dto.from) range['$gte'] = new Date(dto.from);
+      if (dto.to) {
+        const end = new Date(dto.to);
+        if (!/T\d{2}:\d{2}/.test(dto.to)) end.setUTCHours(23, 59, 59, 999);
+        range['$lte'] = end;
+      }
+      filter['createdAt'] = range;
+    }
+
+    return this.customerModel.countDocuments(filter).exec();
+  }
 
   /**
    * Returns a single customer by ID scoped to the tenant.

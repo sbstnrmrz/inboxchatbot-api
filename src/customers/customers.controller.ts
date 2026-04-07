@@ -18,6 +18,7 @@ import {
 import { FindCustomersDto } from './dto/find-customers.dto.js';
 import { AddEmailDto } from './dto/add-email.dto.js';
 import { CustomerDocument } from './schemas/customer.schema.js';
+import { CountMessagesDto } from '../messages/dto/count-messages.dto.js';
 
 @Controller('customers')
 export class CustomersController {
@@ -45,6 +46,24 @@ export class CustomersController {
     }
 
     return this.customersService.findAll(req.tenantId, dto);
+  }
+
+  /**
+   * Returns the total number of customers for the current tenant.
+   * Optionally filtered by creation date (= first message day) via `date`, `from`, or `to`.
+   *
+   * GET /customers/count
+   */
+  @Get('count')
+  async count(
+    @Query() dto: CountMessagesDto,
+    @Request() req: ExpressRequest & { tenantId?: string },
+  ): Promise<{ count: number }> {
+    if (!req.tenantId) {
+      throw new UnauthorizedException('Tenant not resolved');
+    }
+    const count = await this.customersService.count(req.tenantId, dto);
+    return { count };
   }
 
   /**

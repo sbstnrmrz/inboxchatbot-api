@@ -16,6 +16,7 @@ import { CustomersModule } from './customers/customers.module';
 import { MessagesModule } from './messages/messages.module';
 import { FilesModule } from './files/files.module';
 import { TagsModule } from './tags/tags.module';
+import { LlmUsageModule } from './llm-usage/llm-usage.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { TagsModule } from './tags/tags.module';
     MessagesModule,
     FilesModule,
     TagsModule,
+    LlmUsageModule,
   ],
   controllers: [AppController],
   providers: [AppService],

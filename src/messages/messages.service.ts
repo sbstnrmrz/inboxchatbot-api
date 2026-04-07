@@ -39,6 +39,7 @@ import {
 import { InstagramUserProfileDto } from './dto/instagram/instagram-user-profile.dto.js';
 import { FilesService } from '../files/files.service.js';
 import { FindMessagesDto } from './dto/find-messages.dto.js';
+import { CountMessagesDto } from './dto/count-messages.dto.js';
 import { TagsService } from '../tags/tags.service.js';
 
 @Injectable()
@@ -95,6 +96,31 @@ export class MessagesService {
       .limit(limit)
       .lean()
       .exec() as Promise<MessageDocument[]>;
+  }
+
+  async count(tenantId: string, dto: CountMessagesDto = {}): Promise<number> {
+    const tenantObjectId = new Types.ObjectId(tenantId);
+    const filter: Record<string, unknown> = { tenantId: tenantObjectId };
+
+    if (dto.date) {
+      const start = new Date(dto.date);
+      start.setUTCHours(0, 0, 0, 0);
+      const end = new Date(dto.date);
+      end.setUTCHours(23, 59, 59, 999);
+      filter['sentAt'] = { $gte: start, $lte: end };
+    } else if (dto.from || dto.to) {
+      const range: Record<string, Date> = {};
+      if (dto.from) range['$gte'] = new Date(dto.from);
+      if (dto.to) {
+        const end = new Date(dto.to);
+        // If only a date (no time component) was supplied, extend to end of that day
+        if (!/T\d{2}:\d{2}/.test(dto.to)) end.setUTCHours(23, 59, 59, 999);
+        range['$lte'] = end;
+      }
+      filter['sentAt'] = range;
+    }
+
+    return this.messageModel.countDocuments(filter).exec();
   }
 
   async processWhatsAppWebhook(

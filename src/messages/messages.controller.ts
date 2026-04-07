@@ -2,13 +2,17 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Headers,
   HttpCode,
   HttpStatus,
   Logger,
   Post,
   Query,
+  Request,
+  UnauthorizedException,
 } from '@nestjs/common';
+import type { Request as ExpressRequest } from 'express';
 import { MessagesService } from './messages.service.js';
 import { BotResponseDto } from './dto/bot-response.dto.js';
 import {
@@ -16,6 +20,7 @@ import {
   MessageReceivedResult,
 } from './schemas/message.schema.js';
 import type { MessageReceivedDto } from './dto/message-received.dto.js';
+import { CountMessagesDto } from './dto/count-messages.dto.js';
 import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
 
 @Controller('messages')
@@ -23,6 +28,23 @@ export class MessagesController {
   private readonly logger = new Logger(MessagesController.name);
 
   constructor(private readonly messagesService: MessagesService) {}
+
+  /**
+   * Returns the total number of messages for the current tenant.
+   *
+   * GET /messages/count
+   */
+  @Get('count')
+  async count(
+    @Query() dto: CountMessagesDto,
+    @Request() req: ExpressRequest & { tenantId?: string },
+  ): Promise<{ count: number }> {
+    if (!req.tenantId) {
+      throw new UnauthorizedException('Tenant not resolved');
+    }
+    const count = await this.messagesService.count(req.tenantId, dto);
+    return { count };
+  }
 
   /**
    * Unified inbound message endpoint called by n8n after receiving a

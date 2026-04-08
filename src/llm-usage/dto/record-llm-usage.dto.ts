@@ -1,5 +1,5 @@
-import { IsEnum, IsInt, IsOptional, Min, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsEnum, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 import { ConversationChannel } from '../../conversations/schemas/conversation.schema.js';
 
 export class TokenUsageDto {
@@ -13,6 +13,10 @@ export class TokenUsageDto {
 }
 
 export class RecordLlmUsageDto {
+  @IsString()
+  tenantId: string;
+
+  @Transform(({ value }) => (value as string)?.toUpperCase())
   @IsEnum(ConversationChannel)
   channel: ConversationChannel;
 

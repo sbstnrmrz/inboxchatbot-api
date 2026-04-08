@@ -4,6 +4,7 @@ import { Model, Types } from 'mongoose';
 import { LlmUsage, LlmUsageDocument } from './schemas/llm-usage.schema.js';
 import { RecordLlmUsageDto } from './dto/record-llm-usage.dto.js';
 import { FindLlmUsageDto } from './dto/find-llm-usage.dto.js';
+import { TenantsService } from '../tenants/tenants.service.js';
 
 export interface LlmUsageTotals {
   inputTokens: number;
@@ -17,13 +18,12 @@ export class LlmUsageService {
   constructor(
     @InjectModel(LlmUsage.name)
     private readonly llmUsageModel: Model<LlmUsageDocument>,
+    private readonly tenantsService: TenantsService,
   ) {}
 
-  async record(
-    tenantId: string,
-    dto: RecordLlmUsageDto,
-  ): Promise<{ recorded: number }> {
-    const tenantObjectId = new Types.ObjectId(tenantId);
+  async record(dto: RecordLlmUsageDto): Promise<{ recorded: number }> {
+    const resolvedTenantId = await this.tenantsService.resolveId(dto.tenantId);
+    const tenantObjectId = new Types.ObjectId(resolvedTenantId);
 
     const entries: { llmModel: string; inputTokens: number; outputTokens: number }[] = [];
 

@@ -28,14 +28,8 @@ export class LlmUsageController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @AllowAnonymous()
-  async record(
-    @Body() dto: RecordLlmUsageDto,
-    @Request() req: ExpressRequest & { tenantId?: string },
-  ): Promise<{ recorded: number }> {
-    if (!req.tenantId) {
-      throw new UnauthorizedException('Tenant not resolved');
-    }
-    return this.llmUsageService.record(req.tenantId, dto);
+  async record(@Body() dto: RecordLlmUsageDto): Promise<{ recorded: number }> {
+    return this.llmUsageService.record(dto);
   }
 
   /**

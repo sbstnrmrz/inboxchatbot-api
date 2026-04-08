@@ -27,10 +27,10 @@ export class LlmUsageService {
 
     const entries: { llmModel: string; inputTokens: number; outputTokens: number }[] = [];
 
-    if (dto.openaiTokens) {
+    if (dto.openaiTokens && (dto.openaiTokens.input > 0 || dto.openaiTokens.output > 0)) {
       entries.push({ llmModel: 'openai', inputTokens: dto.openaiTokens.input, outputTokens: dto.openaiTokens.output });
     }
-    if (dto.geminiTokens) {
+    if (dto.geminiTokens && (dto.geminiTokens.input > 0 || dto.geminiTokens.output > 0)) {
       entries.push({ llmModel: 'gemini', inputTokens: dto.geminiTokens.input, outputTokens: dto.geminiTokens.output });
     }
 

@@ -34,16 +34,19 @@ export class CustomersService {
     private readonly chatGateway: ChatGateway,
   ) {}
 
-  async count(tenantId: string, dto: CountMessagesDto = {}): Promise<number> {
+  async count(
+    tenantId: string,
+    dto: CountMessagesDto = {},
+  ): Promise<{ total: number; whatsapp: number; instagram: number }> {
     const tenantObjectId = new Types.ObjectId(tenantId);
-    const filter: Record<string, unknown> = { tenantId: tenantObjectId };
+    const match: Record<string, unknown> = { tenantId: tenantObjectId };
 
     if (dto.date) {
       const start = new Date(dto.date);
       start.setUTCHours(0, 0, 0, 0);
       const end = new Date(dto.date);
       end.setUTCHours(23, 59, 59, 999);
-      filter['createdAt'] = { $gte: start, $lte: end };
+      match['createdAt'] = { $gte: start, $lte: end };
     } else if (dto.from || dto.to) {
       const range: Record<string, Date> = {};
       if (dto.from) range['$gte'] = new Date(dto.from);
@@ -52,10 +55,29 @@ export class CustomersService {
         if (!/T\d{2}:\d{2}/.test(dto.to)) end.setUTCHours(23, 59, 59, 999);
         range['$lte'] = end;
       }
-      filter['createdAt'] = range;
+      match['createdAt'] = range;
     }
 
-    return this.customerModel.countDocuments(filter).exec();
+    const rows = await this.customerModel.aggregate<{ channel: string; count: number }>([
+      { $match: match },
+      {
+        $group: {
+          _id: {
+            $cond: [{ $ifNull: ['$whatsappInfo', false] }, 'whatsapp', 'instagram'],
+          },
+          count: { $sum: 1 },
+        },
+      },
+      { $project: { _id: 0, channel: '$_id', count: 1 } },
+    ]);
+
+    const result = { total: 0, whatsapp: 0, instagram: 0 };
+    for (const row of rows) {
+      result[row.channel as 'whatsapp' | 'instagram'] = row.count;
+      result.total += row.count;
+    }
+
+    return result;
   }
 
   /**

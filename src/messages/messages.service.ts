@@ -98,29 +98,44 @@ export class MessagesService {
       .exec() as Promise<MessageDocument[]>;
   }
 
-  async count(tenantId: string, dto: CountMessagesDto = {}): Promise<number> {
+  async count(
+    tenantId: string,
+    dto: CountMessagesDto = {},
+  ): Promise<{ total: number; whatsapp: number; instagram: number }> {
     const tenantObjectId = new Types.ObjectId(tenantId);
-    const filter: Record<string, unknown> = { tenantId: tenantObjectId };
+    const match: Record<string, unknown> = { tenantId: tenantObjectId };
 
     if (dto.date) {
       const start = new Date(dto.date);
       start.setUTCHours(0, 0, 0, 0);
       const end = new Date(dto.date);
       end.setUTCHours(23, 59, 59, 999);
-      filter['sentAt'] = { $gte: start, $lte: end };
+      match['sentAt'] = { $gte: start, $lte: end };
     } else if (dto.from || dto.to) {
       const range: Record<string, Date> = {};
       if (dto.from) range['$gte'] = new Date(dto.from);
       if (dto.to) {
         const end = new Date(dto.to);
-        // If only a date (no time component) was supplied, extend to end of that day
         if (!/T\d{2}:\d{2}/.test(dto.to)) end.setUTCHours(23, 59, 59, 999);
         range['$lte'] = end;
       }
-      filter['sentAt'] = range;
+      match['sentAt'] = range;
     }
 
-    return this.messageModel.countDocuments(filter).exec();
+    const rows = await this.messageModel.aggregate<{ channel: string; count: number }>([
+      { $match: match },
+      { $group: { _id: '$channel', count: { $sum: 1 } } },
+      { $project: { _id: 0, channel: '$_id', count: 1 } },
+    ]);
+
+    const result = { total: 0, whatsapp: 0, instagram: 0 };
+    for (const row of rows) {
+      const key = row.channel.toLowerCase() as 'whatsapp' | 'instagram';
+      result[key] = row.count;
+      result.total += row.count;
+    }
+
+    return result;
   }
 
   async processWhatsAppWebhook(

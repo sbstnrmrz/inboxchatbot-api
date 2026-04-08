@@ -38,12 +38,11 @@ export class MessagesController {
   async count(
     @Query() dto: CountMessagesDto,
     @Request() req: ExpressRequest & { tenantId?: string },
-  ): Promise<{ count: number }> {
+  ): Promise<{ total: number; whatsapp: number; instagram: number }> {
     if (!req.tenantId) {
       throw new UnauthorizedException('Tenant not resolved');
     }
-    const count = await this.messagesService.count(req.tenantId, dto);
-    return { count };
+    return this.messagesService.count(req.tenantId, dto);
   }
 
   /**

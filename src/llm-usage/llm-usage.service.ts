@@ -6,12 +6,14 @@ import { RecordLlmUsageDto } from './dto/record-llm-usage.dto.js';
 import { FindLlmUsageDto } from './dto/find-llm-usage.dto.js';
 import { TenantsService } from '../tenants/tenants.service.js';
 
-export interface LlmUsageTotals {
+export interface ModelChannelTotals {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
   calls: number;
 }
+
+export type LlmUsageTotals = Record<string, Record<string, ModelChannelTotals>>;
 
 @Injectable()
 export class LlmUsageService {
@@ -62,20 +64,48 @@ export class LlmUsageService {
       match['createdAt'] = range;
     }
 
-    const [result] = await this.llmUsageModel.aggregate<LlmUsageTotals>([
+    const rows = await this.llmUsageModel.aggregate<{
+      llmModel: string;
+      channel: string;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      calls: number;
+    }>([
       { $match: match },
       {
         $group: {
-          _id: null,
+          _id: { llmModel: '$llmModel', channel: '$channel' },
           inputTokens: { $sum: '$inputTokens' },
           outputTokens: { $sum: '$outputTokens' },
           totalTokens: { $sum: { $add: ['$inputTokens', '$outputTokens'] } },
           calls: { $sum: 1 },
         },
       },
-      { $project: { _id: 0 } },
+      {
+        $project: {
+          _id: 0,
+          llmModel: '$_id.llmModel',
+          channel: '$_id.channel',
+          inputTokens: 1,
+          outputTokens: 1,
+          totalTokens: 1,
+          calls: 1,
+        },
+      },
     ]);
 
-    return result ?? { inputTokens: 0, outputTokens: 0, totalTokens: 0, calls: 0 };
+    const totals: LlmUsageTotals = {};
+    for (const row of rows) {
+      if (!totals[row.llmModel]) totals[row.llmModel] = {};
+      totals[row.llmModel][row.channel.toLowerCase()] = {
+        inputTokens: row.inputTokens,
+        outputTokens: row.outputTokens,
+        totalTokens: row.totalTokens,
+        calls: row.calls,
+      };
+    }
+
+    return totals;
   }
 }

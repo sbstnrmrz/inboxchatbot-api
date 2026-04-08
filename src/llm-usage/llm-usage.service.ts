@@ -35,7 +35,7 @@ export class LlmUsageService {
     }
 
     await this.llmUsageModel.insertMany(
-      entries.map((e) => ({ tenantId: tenantObjectId, ...e })),
+      entries.map((e) => ({ tenantId: tenantObjectId, channel: dto.channel, ...e })),
     );
 
     return { recorded: entries.length };

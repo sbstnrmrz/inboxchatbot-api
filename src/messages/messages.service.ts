@@ -750,6 +750,7 @@ export class MessagesService {
     addTags?: { name: string; color?: string }[],
     removeTags?: string[],
     removeAllTags?: boolean,
+    execId?: string,
   ): Promise<MessageDocument> {
     // ── 1. Resolve tenantId (accepts slug or ObjectId) ────────────────────
     const resolvedTenantId = await this.tenantsService.resolveId(dto.tenantId);
@@ -892,6 +893,7 @@ export class MessagesService {
       externalId,
       status: MessageStatus.Sent,
       sentAt,
+      execId,
     });
 
     // ── 8. Update conversation lastMessage ────────────────────────────────

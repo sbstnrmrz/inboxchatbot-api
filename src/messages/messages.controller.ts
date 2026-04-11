@@ -82,6 +82,7 @@ export class MessagesController {
   @HttpCode(HttpStatus.CREATED)
   @AllowAnonymous()
   async botResponse(
+    @Headers('exec-id') execId: string | undefined,
     @Body() dto: BotResponseDto,
     @Query('request_agent') requestAgent?: string,
     @Query('add_tags') addTagsParam?: string,
@@ -121,6 +122,7 @@ export class MessagesController {
       addTags,
       removeTags,
       removeAllTags,
+      execId,
     );
   }
 }

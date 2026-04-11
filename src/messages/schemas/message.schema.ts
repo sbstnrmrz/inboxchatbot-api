@@ -216,6 +216,10 @@ export class Message {
   @Prop({ type: Object })
   referral?: MessageReferral;
 
+  /** n8n execution ID — supplied via the ExecId header for debugging purposes */
+  @Prop({ type: String })
+  execId?: string;
+
   createdAt?: Date;
   updatedAt?: Date;
 }

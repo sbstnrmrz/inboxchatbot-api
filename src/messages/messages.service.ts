@@ -141,6 +141,7 @@ export class MessagesService {
   async processWhatsAppWebhook(
     tenantId: string,
     payload: WhatsAppN8nWebhookItemDto,
+    execId?: string,
   ): Promise<MessageReceivedResult[]> {
     const { messages, contacts } = payload;
     this.logger.debug('Received WhatsApp Messsage');
@@ -278,6 +279,7 @@ export class MessagesService {
         externalId: waMessage.id,
         status: MessageStatus.Delivered,
         sentAt,
+        execId,
       });
 
       await this.conversationModel.findByIdAndUpdate(conversationObjectId, {
@@ -320,6 +322,7 @@ export class MessagesService {
   async processInstagramWebhook(
     tenantId: string,
     payload: InstagramWebhookDto,
+    execId?: string,
   ): Promise<MessageReceivedResult[]> {
     const tenantObjectId = new Types.ObjectId(tenantId);
     const savedMessages: MessageReceivedResult[] = [];
@@ -463,6 +466,7 @@ export class MessagesService {
           externalId: event.message.mid,
           status: MessageStatus.Delivered,
           sentAt,
+          execId,
         });
 
         // ── 5. Update conversation lastMessage ──────────────────────────────
@@ -989,6 +993,7 @@ export class MessagesService {
   async messageReceived(
     tenantId: string,
     payload: MessageReceivedDto,
+    execId?: string,
   ): Promise<MessageReceivedResult[]> {
     const resolvedTenantId = await this.tenantsService.resolveId(tenantId);
 
@@ -999,6 +1004,7 @@ export class MessagesService {
       return this.processWhatsAppWebhook(
         resolvedTenantId,
         payload as WhatsAppN8nWebhookItemDto,
+        execId,
       );
     }
 
@@ -1007,6 +1013,7 @@ export class MessagesService {
       return this.processInstagramWebhook(
         resolvedTenantId,
         payload as InstagramWebhookDto,
+        execId,
       );
     }
 

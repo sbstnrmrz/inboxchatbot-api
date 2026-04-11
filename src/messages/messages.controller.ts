@@ -61,12 +61,13 @@ export class MessagesController {
   @AllowAnonymous()
   async messageReceived(
     @Headers('tenant-id') tenantId: string,
+    @Headers('exec-id') execId: string | undefined,
     @Body() payload: MessageReceivedDto,
   ): Promise<MessageReceivedResult[]> {
     if (!tenantId) {
       throw new BadRequestException('Missing required header: Tenant-Id');
     }
-    return this.messagesService.messageReceived(tenantId, payload);
+    return this.messagesService.messageReceived(tenantId, payload, execId);
   }
 
   /**

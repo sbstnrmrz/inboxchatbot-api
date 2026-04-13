@@ -61,7 +61,7 @@ export class MessagesController {
   @AllowAnonymous()
   async messageReceived(
     @Headers('tenant-id') tenantId: string,
-    @Headers('exec-id') execId: string | undefined,
+    @Headers('execId') execId: string | undefined,
     @Body() payload: MessageReceivedDto,
   ): Promise<MessageReceivedResult[]> {
     if (!tenantId) {
@@ -82,7 +82,7 @@ export class MessagesController {
   @HttpCode(HttpStatus.CREATED)
   @AllowAnonymous()
   async botResponse(
-    @Headers('exec-id') execId: string | undefined,
+    @Headers('execId') execId: string | undefined,
     @Body() dto: BotResponseDto,
     @Query('request_agent') requestAgent?: string,
     @Query('add_tags') addTagsParam?: string,

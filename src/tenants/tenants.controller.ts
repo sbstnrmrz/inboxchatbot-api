@@ -9,6 +9,7 @@ import {
   Request,
   UnauthorizedException,
 } from '@nestjs/common';
+import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
 import type { Request as ExpressRequest } from 'express';
 import { TenantsService } from './tenants.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
@@ -38,6 +39,7 @@ export class TenantsController {
     return result;
   }
 
+  @AllowAnonymous()
   @Get('bot-status')
   async getBotStatus(@Request() req: ExpressRequest & { tenantId?: string }) {
     const headerValue = req.headers['tenant-id'] as string | undefined;

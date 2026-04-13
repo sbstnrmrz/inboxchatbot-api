@@ -20,7 +20,7 @@ import { TagsModule } from '../tags/tags.module.js';
 @Module({
   imports: [
     forwardRef(() => ChatModule),
-    TenantsModule,
+    forwardRef(() => TenantsModule),
     FilesModule,
     forwardRef(() => TagsModule),
     MongooseModule.forFeature([

@@ -128,6 +128,31 @@ export class TenantsService {
     return updated;
   }
 
+  async getBotStatus(id: string): Promise<{ botEnabled: boolean }> {
+    const tenant = await this.tenantModel.findById(id).select('botEnabled').lean().exec();
+
+    if (!tenant) {
+      throw new NotFoundException(`Tenant with id "${id}" not found`);
+    }
+
+    return { botEnabled: tenant.botEnabled ?? true };
+  }
+
+  async toggleBot(id: string): Promise<{ botEnabled: boolean }> {
+    const tenant = await this.tenantModel.findById(id).select('botEnabled').exec();
+
+    if (!tenant) {
+      throw new NotFoundException(`Tenant with id "${id}" not found`);
+    }
+
+    const next = !tenant.botEnabled;
+    await this.tenantModel.findByIdAndUpdate(id, { botEnabled: next }).exec();
+
+    this.logger.log(`Tenant ${id} botEnabled set to ${next}`);
+
+    return { botEnabled: next };
+  }
+
   async remove(id: string): Promise<{ deleted: boolean }> {
     const result = await this.tenantModel.findByIdAndDelete(id).lean().exec();
 

@@ -97,6 +97,9 @@ export class Tenant {
   @Prop({ type: Object })
   instagramInfo?: InstagramInfo;
 
+  @Prop({ type: Boolean, default: true })
+  botEnabled: boolean;
+
   // Timestamps (auto-managed by mongoose)
   createdAt?: Date;
   updatedAt?: Date;

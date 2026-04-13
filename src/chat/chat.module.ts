@@ -7,7 +7,7 @@ import { MessagesModule } from '../messages/messages.module';
 
 @Module({
   imports: [
-    TenantsModule,
+    forwardRef(() => TenantsModule),
     ConversationsModule,
     forwardRef(() => MessagesModule),
   ],

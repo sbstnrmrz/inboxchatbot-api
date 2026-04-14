@@ -11,6 +11,7 @@ import {
   MessageDocument,
 } from '../messages/schemas/message.schema.js';
 import { FindCustomersDto } from './dto/find-customers.dto.js';
+import { FindCustomersAdditionalDto } from './dto/find-customers-additional.dto.js';
 import { CountMessagesDto } from '../messages/dto/count-messages.dto.js';
 import { ChatGateway } from '../chat/chat.gateway.js';
 import { CustomerEvent } from '../chat/enums/customer-events.enum.js';
@@ -18,6 +19,14 @@ import { CustomerEvent } from '../chat/enums/customer-events.enum.js';
 export type CustomerWithMessageCount = CustomerDocument & {
   conversationId: Types.ObjectId | null;
   messageCount: number;
+};
+
+export type PaginatedCustomersWithMessageCount = {
+  data: CustomerWithMessageCount[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 };
 
 @Injectable()
@@ -150,25 +159,25 @@ export class CustomersService {
    */
   async findAllWithMessageCount(
     tenantId: string,
-    dto: FindCustomersDto,
-  ): Promise<CustomerWithMessageCount[]> {
-    const { before, limit = 20, search } = dto;
+    dto: FindCustomersAdditionalDto,
+  ): Promise<PaginatedCustomersWithMessageCount> {
+    const { page = 1, limit = 20, search } = dto;
+    const skip = (page - 1) * limit;
     const tenantObjectId = new Types.ObjectId(tenantId);
 
     const matchStage: Record<string, unknown> = { tenantId: tenantObjectId };
-
-    if (before) {
-      matchStage['createdAt'] = { $lt: new Date(before) };
-    }
 
     if (search) {
       matchStage['name'] = { $regex: search, $options: 'i' };
     }
 
+    const total = await this.customerModel.countDocuments(matchStage);
+
     const results =
       await this.customerModel.aggregate<CustomerWithMessageCount>([
         { $match: matchStage },
         { $sort: { createdAt: -1 } },
+        { $skip: skip },
         { $limit: limit },
         // Join the conversation that belongs to this customer within the tenant
         {
@@ -234,7 +243,7 @@ export class CustomersService {
         },
       ]);
 
-    return results;
+    return { data: results, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   /**

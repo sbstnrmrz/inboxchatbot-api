@@ -13,9 +13,10 @@ import {
 import type { Request as ExpressRequest } from 'express';
 import {
   CustomersService,
-  CustomerWithMessageCount,
+  PaginatedCustomersWithMessageCount,
 } from './customers.service.js';
 import { FindCustomersDto } from './dto/find-customers.dto.js';
+import { FindCustomersAdditionalDto } from './dto/find-customers-additional.dto.js';
 import { AddEmailDto } from './dto/add-email.dto.js';
 import { CustomerDocument } from './schemas/customer.schema.js';
 import { CountMessagesDto } from '../messages/dto/count-messages.dto.js';
@@ -69,15 +70,15 @@ export class CustomersController {
    * Returns a paginated list of customers enriched with a `messageCount` field
    * containing the total number of messages across all their conversations.
    *
-   * Accepts the same cursor-based pagination and search query params as GET /customers.
+   * Supports page/limit pagination and optional search by name.
    *
    * GET /customers/additional
    */
   @Get('additional')
   async findAllWithMessageCount(
-    @Query() dto: FindCustomersDto,
+    @Query() dto: FindCustomersAdditionalDto,
     @Request() req: ExpressRequest & { tenantId?: string },
-  ): Promise<CustomerWithMessageCount[]> {
+  ): Promise<PaginatedCustomersWithMessageCount> {
     if (!req.tenantId) {
       throw new UnauthorizedException('Tenant not resolved');
     }

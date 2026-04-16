@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   Query,
   Request,
@@ -47,5 +48,19 @@ export class LlmUsageController {
       throw new UnauthorizedException('Tenant not resolved');
     }
     return this.llmUsageService.totals(req.tenantId, dto);
+  }
+
+  /**
+   * Returns aggregated token usage totals for a specific tenant by ID.
+   * Intended for admin/cross-tenant use.
+   *
+   * GET /llm-usage/totals/:tenantId
+   */
+  @Get('totals/:tenantId')
+  async totalsByTenant(
+    @Param('tenantId') tenantId: string,
+    @Query() dto: FindLlmUsageDto,
+  ): Promise<LlmUsageTotals> {
+    return this.llmUsageService.totals(tenantId, dto);
   }
 }

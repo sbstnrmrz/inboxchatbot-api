@@ -67,6 +67,20 @@ export class CustomersController {
   }
 
   /**
+   * Returns the total number of customers for a specific tenant by ID.
+   * Intended for admin/cross-tenant use.
+   *
+   * GET /customers/count/:tenantId
+   */
+  @Get('count/:tenantId')
+  async countByTenant(
+    @Param('tenantId') tenantId: string,
+    @Query() dto: CountMessagesDto,
+  ): Promise<{ total: number; whatsapp: number; instagram: number }> {
+    return this.customersService.count(tenantId, dto);
+  }
+
+  /**
    * Returns a paginated list of customers enriched with a `messageCount` field
    * containing the total number of messages across all their conversations.
    *

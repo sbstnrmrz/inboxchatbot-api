@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  Param,
   Post,
   Query,
   Request,
@@ -43,6 +44,20 @@ export class MessagesController {
       throw new UnauthorizedException('Tenant not resolved');
     }
     return this.messagesService.count(req.tenantId, dto);
+  }
+
+  /**
+   * Returns the total number of messages for a specific tenant by ID.
+   * Intended for admin/cross-tenant use.
+   *
+   * GET /messages/count/:tenantId
+   */
+  @Get('count/:tenantId')
+  async countByTenant(
+    @Param('tenantId') tenantId: string,
+    @Query() dto: CountMessagesDto,
+  ): Promise<{ total: number; whatsapp: number; instagram: number }> {
+    return this.messagesService.count(tenantId, dto);
   }
 
   /**

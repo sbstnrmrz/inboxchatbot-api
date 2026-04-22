@@ -1,8 +1,8 @@
-import { IsEnum, IsISO8601, IsMongoId, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsISO8601, IsOptional, IsString } from 'class-validator';
 import { BookingStatus } from '../schemas/booking.schema.js';
 
 export class CreateBookingDto {
-  @IsMongoId()
+  @IsString()
   tenantId: string;
 
   @IsString()

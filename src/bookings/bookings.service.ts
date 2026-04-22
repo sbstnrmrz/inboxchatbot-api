@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Booking, BookingDocument } from './schemas/booking.schema.js';
 import { Customer, CustomerDocument } from '../customers/schemas/customer.schema.js';
+import { TenantsService } from '../tenants/tenants.service.js';
 import { CreateBookingDto } from './dto/create-booking.dto.js';
 import { UpdateBookingDto } from './dto/update-booking.dto.js';
 import { FindBookingsDto } from './dto/find-bookings.dto.js';
@@ -16,6 +17,7 @@ export class BookingsService {
     private readonly bookingModel: Model<BookingDocument>,
     @InjectModel(Customer.name)
     private readonly customerModel: Model<CustomerDocument>,
+    private readonly tenantsService: TenantsService,
   ) {}
 
   private async resolveCustomerId(tenantId: string, rawId: string): Promise<Types.ObjectId> {
@@ -43,9 +45,10 @@ export class BookingsService {
   }
 
   async create(tenantId: string, dto: CreateBookingDto): Promise<BookingDocument> {
-    const customerId = await this.resolveCustomerId(tenantId, dto.customerId);
+    const resolvedTenantId = await this.tenantsService.resolveId(tenantId);
+    const customerId = await this.resolveCustomerId(resolvedTenantId, dto.customerId);
     const booking = new this.bookingModel({
-      tenantId: new Types.ObjectId(tenantId),
+      tenantId: new Types.ObjectId(resolvedTenantId),
       customerId,
       startDate: new Date(dto.startDate),
       endDate: new Date(dto.endDate),

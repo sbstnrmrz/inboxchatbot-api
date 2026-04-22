@@ -10,6 +10,7 @@ import {
   Request,
   UnauthorizedException,
 } from '@nestjs/common';
+import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
 import type { Request as ExpressRequest } from 'express';
 import { BookingsService } from './bookings.service.js';
 import { CreateBookingDto } from './dto/create-booking.dto.js';
@@ -20,6 +21,7 @@ import { FindBookingsDto } from './dto/find-bookings.dto.js';
 export class BookingsController {
   constructor(private readonly bookingsService: BookingsService) {}
 
+  @AllowAnonymous()
   @Post()
   create(@Body() dto: CreateBookingDto) {
     return this.bookingsService.create(dto.tenantId, dto);

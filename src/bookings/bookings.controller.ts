@@ -16,6 +16,8 @@ import { BookingsService } from './bookings.service.js';
 import { CreateBookingDto } from './dto/create-booking.dto.js';
 import { UpdateBookingDto } from './dto/update-booking.dto.js';
 import { FindBookingsDto } from './dto/find-bookings.dto.js';
+import { CountBookingsDto } from './dto/count-bookings.dto.js';
+import { UpdateBookingStatusDto } from './dto/update-booking-status.dto.js';
 
 @Controller('bookings')
 export class BookingsController {
@@ -25,6 +27,40 @@ export class BookingsController {
   @Post()
   create(@Body() dto: CreateBookingDto) {
     return this.bookingsService.create(dto.tenantId, dto);
+  }
+
+  @Get('count')
+  count(
+    @Query() dto: CountBookingsDto,
+    @Request() req: ExpressRequest & { tenantId?: string },
+  ) {
+    if (!req.tenantId) throw new UnauthorizedException('Tenant not resolved');
+    return this.bookingsService.count(req.tenantId, dto);
+  }
+
+  @Get('count/created')
+  countCreated(
+    @Query() dto: CountBookingsDto,
+    @Request() req: ExpressRequest & { tenantId?: string },
+  ) {
+    if (!req.tenantId) throw new UnauthorizedException('Tenant not resolved');
+    return this.bookingsService.countCreated(req.tenantId, dto);
+  }
+
+  @Get('count/created/:tenantId')
+  countCreatedByTenant(
+    @Param('tenantId') tenantId: string,
+    @Query() dto: CountBookingsDto,
+  ) {
+    return this.bookingsService.countCreated(tenantId, dto);
+  }
+
+  @Get('count/:tenantId')
+  countByTenant(
+    @Param('tenantId') tenantId: string,
+    @Query() dto: CountBookingsDto,
+  ) {
+    return this.bookingsService.count(tenantId, dto);
   }
 
   @Get()
@@ -43,6 +79,16 @@ export class BookingsController {
   ) {
     if (!req.tenantId) throw new UnauthorizedException('Tenant not resolved');
     return this.bookingsService.findOne(req.tenantId, id);
+  }
+
+  @Patch(':id/status')
+  updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateBookingStatusDto,
+    @Request() req: ExpressRequest & { tenantId?: string },
+  ) {
+    if (!req.tenantId) throw new UnauthorizedException('Tenant not resolved');
+    return this.bookingsService.updateStatus(req.tenantId, id, dto.status);
   }
 
   @Patch(':id')

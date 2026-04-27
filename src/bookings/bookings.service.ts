@@ -1,12 +1,23 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { Booking, BookingDocument } from './schemas/booking.schema.js';
+import { Booking, BookingDocument, BookingStatus } from './schemas/booking.schema.js';
 import { Customer, CustomerDocument } from '../customers/schemas/customer.schema.js';
 import { TenantsService } from '../tenants/tenants.service.js';
 import { CreateBookingDto } from './dto/create-booking.dto.js';
 import { UpdateBookingDto } from './dto/update-booking.dto.js';
 import { FindBookingsDto } from './dto/find-bookings.dto.js';
+import { CountBookingsDto } from './dto/count-bookings.dto.js';
+
+export type BookingWithCustomer = BookingDocument & { customerName: string };
+
+export type PaginatedBookings = {
+  data: BookingWithCustomer[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+};
 
 @Injectable()
 export class BookingsService {
@@ -44,9 +55,71 @@ export class BookingsService {
     throw new NotFoundException(`No customer found for id ${rawId}`);
   }
 
+  private buildDateFilter(dto: CountBookingsDto, field: string): Record<string, unknown> {
+    if (dto.date) {
+      const start = new Date(dto.date);
+      start.setUTCHours(0, 0, 0, 0);
+      const end = new Date(dto.date);
+      end.setUTCHours(23, 59, 59, 999);
+      return { [field]: { $gte: start, $lte: end } };
+    }
+    if (dto.from || dto.to) {
+      const range: Record<string, Date> = {};
+      if (dto.from) range['$gte'] = new Date(dto.from);
+      if (dto.to) {
+        const end = new Date(dto.to);
+        if (!/T\d{2}:\d{2}/.test(dto.to)) end.setUTCHours(23, 59, 59, 999);
+        range['$lte'] = end;
+      }
+      return { [field]: range };
+    }
+    return {};
+  }
+
+  private async aggregateByStatus(
+    match: Record<string, unknown>,
+  ): Promise<{ total: number; pending: number; done: number; canceled: number }> {
+    const rows = await this.bookingModel.aggregate<{ status: string; count: number }>([
+      { $match: match },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+      { $project: { _id: 0, status: '$_id', count: 1 } },
+    ]);
+
+    const result = { total: 0, pending: 0, done: 0, canceled: 0 };
+    for (const row of rows) {
+      const key = row.status.toLowerCase() as 'pending' | 'done' | 'canceled';
+      result[key] = row.count;
+      result.total += row.count;
+    }
+    return result;
+  }
+
+  async count(
+    tenantId: string,
+    dto: CountBookingsDto = {},
+  ): Promise<{ total: number; pending: number; done: number; canceled: number }> {
+    const match: Record<string, unknown> = {
+      tenantId: new Types.ObjectId(tenantId),
+      ...this.buildDateFilter(dto, 'startDate'),
+    };
+    return this.aggregateByStatus(match);
+  }
+
+  async countCreated(
+    tenantId: string,
+    dto: CountBookingsDto = {},
+  ): Promise<{ total: number; pending: number; done: number; canceled: number }> {
+    const match: Record<string, unknown> = {
+      tenantId: new Types.ObjectId(tenantId),
+      ...this.buildDateFilter(dto, 'createdAt'),
+    };
+    return this.aggregateByStatus(match);
+  }
+
   async create(tenantId: string, dto: CreateBookingDto): Promise<BookingDocument> {
     const resolvedTenantId = await this.tenantsService.resolveId(tenantId);
     const customerId = await this.resolveCustomerId(resolvedTenantId, dto.customerId);
+    this.logger.log(`Creating booking for customerId=${customerId} tenantId=${resolvedTenantId}`);
     const booking = new this.bookingModel({
       tenantId: new Types.ObjectId(resolvedTenantId),
       customerId,
@@ -57,8 +130,9 @@ export class BookingsService {
     return booking.save();
   }
 
-  async findAll(tenantId: string, dto: FindBookingsDto): Promise<BookingDocument[]> {
-    const { status, customerId, before, limit = 20 } = dto;
+  async findAll(tenantId: string, dto: FindBookingsDto): Promise<PaginatedBookings> {
+    const { status, customerId, page = 1, limit = 20 } = dto;
+    const skip = (page - 1) * limit;
     const tenantObjectId = new Types.ObjectId(tenantId);
 
     const filter: Record<string, unknown> = { tenantId: tenantObjectId };
@@ -71,32 +145,61 @@ export class BookingsService {
       filter['customerId'] = new Types.ObjectId(customerId);
     }
 
-    if (before) {
-      filter['startDate'] = { $lt: new Date(before) };
-    }
+    const total = await this.bookingModel.countDocuments(filter);
 
-    return this.bookingModel
-      .find(filter)
-      .sort({ startDate: -1 })
-      .limit(limit)
-      .lean()
-      .exec() as unknown as BookingDocument[];
+    const data = await this.bookingModel.aggregate<BookingWithCustomer>([
+      { $match: filter },
+      { $sort: { startDate: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+      {
+        $lookup: {
+          from: this.customerModel.collection.name,
+          localField: 'customerId',
+          foreignField: '_id',
+          as: 'customer',
+        },
+      },
+      {
+        $addFields: {
+          customerName: { $ifNull: [{ $arrayElemAt: ['$customer.name', 0] }, null] },
+        },
+      },
+      { $project: { customer: 0 } },
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  async findOne(tenantId: string, id: string): Promise<BookingDocument> {
-    const booking = await this.bookingModel
-      .findOne({
-        _id: new Types.ObjectId(id),
-        tenantId: new Types.ObjectId(tenantId),
-      })
-      .lean()
-      .exec();
+  async findOne(tenantId: string, id: string): Promise<BookingWithCustomer> {
+    const [booking] = await this.bookingModel.aggregate<BookingWithCustomer>([
+      {
+        $match: {
+          _id: new Types.ObjectId(id),
+          tenantId: new Types.ObjectId(tenantId),
+        },
+      },
+      {
+        $lookup: {
+          from: this.customerModel.collection.name,
+          localField: 'customerId',
+          foreignField: '_id',
+          as: 'customer',
+        },
+      },
+      {
+        $addFields: {
+          customerName: { $ifNull: [{ $arrayElemAt: ['$customer.name', 0] }, null] },
+        },
+      },
+      { $project: { customer: 0 } },
+    ]);
 
     if (!booking) {
       throw new NotFoundException(`Booking ${id} not found`);
     }
 
-    return booking as unknown as BookingDocument;
+    return booking;
   }
 
   async update(tenantId: string, id: string, dto: UpdateBookingDto): Promise<BookingDocument> {
@@ -111,6 +214,23 @@ export class BookingsService {
       .findOneAndUpdate(
         { _id: new Types.ObjectId(id), tenantId: new Types.ObjectId(tenantId) },
         update,
+        { new: true },
+      )
+      .lean()
+      .exec();
+
+    if (!booking) {
+      throw new NotFoundException(`Booking ${id} not found`);
+    }
+
+    return booking as unknown as BookingDocument;
+  }
+
+  async updateStatus(tenantId: string, id: string, status: BookingStatus): Promise<BookingDocument> {
+    const booking = await this.bookingModel
+      .findOneAndUpdate(
+        { _id: new Types.ObjectId(id), tenantId: new Types.ObjectId(tenantId) },
+        { status },
         { new: true },
       )
       .lean()

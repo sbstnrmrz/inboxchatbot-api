@@ -1026,8 +1026,7 @@ export class MessagesService {
 
     // Save locally under the channel folder — consistent with inbound media storage
     const channel = conversation.channel.toLowerCase(); // "whatsapp" | "instagram"
-    const messageId = new Types.ObjectId();
-    const { fileId, mimeType } = this.filesService.saveUploadedFile(tenantId, channel, file, messageId.toString());
+    const { fileId, mimeType } = this.filesService.saveUploadedFile(tenantId, channel, file);
     const mediaType = mimeType.split('/')[0]; // "image", "video", etc.
     const messageType = this.mimeTypeToMessageType(mimeType);
 
@@ -1092,7 +1091,6 @@ export class MessagesService {
     }
 
     const message = await this.messageModel.create({
-      _id: messageId,
       tenantId: tenantObjectId,
       conversationId: new Types.ObjectId(conversationId),
       channel: conversation.channel as unknown as MessageChannel,

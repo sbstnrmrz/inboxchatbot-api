@@ -62,10 +62,11 @@ export class FilesService {
     tenantId: string,
     channel: string,
     file: Express.Multer.File,
+    fileId?: string,
   ): { fileId: string; mimeType: string; size: number } {
     const ext = this.extensionFromMime(file.mimetype);
     const mediaType = file.mimetype.split('/')[0]; // "image", "video", etc.
-    const fileId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    fileId ??= `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const dir = this.buildDir(tenantId, channel, mediaType);
     fs.mkdirSync(dir, { recursive: true });
 

@@ -1,4 +1,5 @@
-import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
@@ -60,6 +61,7 @@ export class MessagesService {
     private readonly tenantsService: TenantsService,
     private readonly filesService: FilesService,
     private readonly tagsService: TagsService,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -254,6 +256,7 @@ export class MessagesService {
       const media =
         rawMedia && mediaTypes.includes(messageType)
           ? {
+              id: rawMedia.id,
               whatsappMediaId: rawMedia.id,
               mimeType: rawMedia.mime_type,
               sha256: rawMedia.sha256,
@@ -442,7 +445,7 @@ export class MessagesService {
         );
 
         const media = attachment?.payload?.url
-          ? { url: attachment.payload.url }
+          ? { id: event.message.mid, url: attachment.payload.url }
           : undefined;
 
         // ── 4. Persist message ──────────────────────────────────────────────
@@ -986,6 +989,131 @@ export class MessagesService {
   }
 
   /**
+   * Handles an image (or other media) uploaded by an agent from the UI.
+   *
+   * Flow:
+   *   1. Save the file locally under uploads/{tenantId}/client/{mediaType}/
+   *   2. Upload the binary to the channel's media API to obtain a stable media ID
+   *   3. Send the message via the channel API
+   *   4. Persist + emit the outbound message just like sendMessage does
+   *
+   * For Instagram the file is served from this API at a public URL
+   * (requires BASE_URL env var) because the IG API accepts URLs, not uploads.
+   */
+  async sendMediaMessage(
+    tenantId: string,
+    agentId: string,
+    conversationId: string,
+    file: Express.Multer.File,
+    caption?: string,
+  ): Promise<MessageDocument> {
+    const tenantObjectId = new Types.ObjectId(tenantId);
+
+    const conversation = await this.conversationModel
+      .findOne({ _id: conversationId, tenantId: tenantObjectId })
+      .lean()
+      .exec();
+    if (!conversation) throw new BadRequestException(`Conversation ${conversationId} not found`);
+
+    const tenant = await this.tenantModel.findById(tenantObjectId).lean().exec();
+    if (!tenant) throw new BadRequestException(`Tenant ${tenantId} not found`);
+
+    const customer = await this.customerModel
+      .findOne({ _id: conversation.customerId, tenantId: tenantObjectId })
+      .lean()
+      .exec();
+    if (!customer) throw new BadRequestException(`Customer not found`);
+
+    // Save locally under the channel folder — consistent with inbound media storage
+    const channel = conversation.channel.toLowerCase(); // "whatsapp" | "instagram"
+    const { fileId, mimeType } = this.filesService.saveUploadedFile(tenantId, channel, file);
+    const mediaType = mimeType.split('/')[0]; // "image", "video", etc.
+    const messageType = this.mimeTypeToMessageType(mimeType);
+
+    const sentAt = new Date();
+    let externalId: string | undefined;
+    let media: Record<string, unknown>;
+
+    if (conversation.channel === ConversationChannel.WhatsApp) {
+      const waInfo = tenant.whatsappInfo;
+      if (!waInfo) throw new BadRequestException(`Tenant has no WhatsApp config`);
+
+      const recipientId = (customer as any).whatsappInfo?.id;
+      if (!recipientId) throw new BadRequestException(`Customer has no WhatsApp ID`);
+
+      // Upload binary to WA and get a stable media ID
+      const whatsappMediaId = await this.filesService.uploadToWhatsAppMedia(
+        waInfo.phoneNumberId,
+        waInfo.accessToken,
+        file,
+      );
+
+      const waResponse = await this.callWhatsAppApi(
+        waInfo.phoneNumberId,
+        waInfo.accessToken,
+        recipientId,
+        {
+          conversationId,
+          messageType,
+          media: { whatsappMediaId, mimeType, caption },
+        },
+      );
+
+      externalId = waResponse.messages[0]?.id;
+      media = { id: fileId, whatsappMediaId, mimeType, caption };
+
+    } else if (conversation.channel === ConversationChannel.Instagram) {
+      const igInfo = tenant.instagramInfo;
+      if (!igInfo) throw new BadRequestException(`Tenant has no Instagram config`);
+
+      const recipientId = (customer as any).instagramInfo?.accountId;
+      if (!recipientId) throw new BadRequestException(`Customer has no Instagram ID`);
+
+      const baseUrl = this.configService.get<string>('BASE_URL') ?? '';
+      const url = `${baseUrl}/files/${channel}/${mediaType}/${fileId}`;
+
+      const igResponse = await this.callInstagramApi(
+        igInfo.accountId,
+        igInfo.accessToken,
+        recipientId,
+        {
+          conversationId,
+          messageType,
+          media: { url, mimeType, caption },
+        },
+      );
+
+      externalId = igResponse.message_id;
+      media = { id: fileId, url, mimeType, caption };
+
+    } else {
+      throw new BadRequestException(`Unsupported channel: ${conversation.channel}`);
+    }
+
+    const message = await this.messageModel.create({
+      tenantId: tenantObjectId,
+      conversationId: new Types.ObjectId(conversationId),
+      channel: conversation.channel as unknown as MessageChannel,
+      direction: MessageDirection.Outbound,
+      messageType,
+      sender: { type: SenderType.User, id: new Types.ObjectId(agentId) },
+      media,
+      externalId,
+      status: MessageStatus.Sent,
+      sentAt,
+    });
+
+    await this.conversationModel.findByIdAndUpdate(conversationId, {
+      lastMessage: message._id,
+      lastMessageAt: sentAt,
+    });
+
+    this.chatGateway.emitToTenant(tenantId, MessageEvent.Sent, message);
+
+    return message;
+  }
+
+  /**
    * Unified entry point called by the n8n workflow.
    * Detects the channel from the payload and delegates to the appropriate
    * processor:
@@ -1068,6 +1196,15 @@ export class MessagesService {
       return map[attachmentType] ?? MessageType.Unknown;
     }
     return text ? MessageType.Text : MessageType.Unknown;
+  }
+
+  private mimeTypeToMessageType(mimeType: string): MessageType {
+    const prefix = mimeType.split('/')[0];
+    if (prefix === 'image') return MessageType.Image;
+    if (prefix === 'video') return MessageType.Video;
+    if (prefix === 'audio') return MessageType.Audio;
+    if (mimeType === 'application/pdf') return MessageType.Document;
+    return MessageType.Document;
   }
 
   /**

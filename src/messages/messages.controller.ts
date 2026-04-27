@@ -12,7 +12,10 @@ import {
   Query,
   Request,
   UnauthorizedException,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request as ExpressRequest } from 'express';
 import { MessagesService } from './messages.service.js';
 import { BotResponseDto } from './dto/bot-response.dto.js';
@@ -23,6 +26,15 @@ import {
 import type { MessageReceivedDto } from './dto/message-received.dto.js';
 import { CountMessagesDto } from './dto/count-messages.dto.js';
 import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
+
+const ALLOWED_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+]);
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 @Controller('messages')
 export class MessagesController {
@@ -58,6 +70,58 @@ export class MessagesController {
     @Query() dto: CountMessagesDto,
   ): Promise<{ total: number; whatsapp: number; instagram: number }> {
     return this.messagesService.count(tenantId, dto);
+  }
+
+  /**
+   * POST /messages/send-media
+   * Uploads a media file and sends it as an outbound message via the
+   * conversation's channel (WhatsApp or Instagram).
+   *
+   * Expects multipart/form-data with:
+   *   file          — the image binary
+   *   conversationId — the target conversation (MongoId)
+   *   caption        — optional caption text
+   */
+  @Post('send-media')
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE } }),
+  )
+  async sendMedia(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('conversationId') conversationId: string,
+    @Body('caption') caption: string | undefined,
+    @Request()
+    req: ExpressRequest & {
+      tenantId?: string;
+      session?: { user?: { tenantId?: string; id?: string } };
+    },
+  ): Promise<MessageDocument> {
+    const tenantId = req.tenantId ?? (req as any).session?.user?.tenantId;
+    const agentId = (req as any).session?.user?.id;
+
+    if (!tenantId || !agentId) {
+      throw new BadRequestException('Not authenticated');
+    }
+    if (!conversationId) {
+      throw new BadRequestException('conversationId is required');
+    }
+    if (!file) {
+      throw new BadRequestException('No file provided');
+    }
+    if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      throw new BadRequestException(
+        `Unsupported file type: ${file.mimetype}. Allowed: ${[...ALLOWED_MIME_TYPES].join(', ')}`,
+      );
+    }
+
+    return this.messagesService.sendMediaMessage(
+      tenantId,
+      agentId,
+      conversationId,
+      file,
+      caption,
+    );
   }
 
   /**

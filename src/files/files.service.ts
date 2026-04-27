@@ -53,6 +53,70 @@ export class FilesService {
   // ─── Public API ────────────────────────────────────────────────────────────
 
   /**
+   * Saves a file uploaded by the client (agent/operator) to disk.
+   * Storage layout: {uploadsDir}/{tenantId}/client/{mediaType}/{fileId}.{ext}
+   *
+   * @returns fileId  — the stem used as the file identifier
+   */
+  saveUploadedFile(
+    tenantId: string,
+    channel: string,
+    file: Express.Multer.File,
+  ): { fileId: string; mimeType: string; size: number } {
+    const ext = this.extensionFromMime(file.mimetype);
+    const mediaType = file.mimetype.split('/')[0]; // "image", "video", etc.
+    const fileId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const dir = this.buildDir(tenantId, channel, mediaType);
+    fs.mkdirSync(dir, { recursive: true });
+
+    const filePath = path.join(dir, `${fileId}.${ext}`);
+    fs.writeFileSync(filePath, file.buffer);
+
+    this.logger.log(`Saved client upload: ${filePath}`);
+    return { fileId, mimeType: file.mimetype, size: file.size };
+  }
+
+  /**
+   * Uploads a file binary to the WhatsApp Cloud API media endpoint and
+   * returns the resulting WhatsApp media ID.
+   *
+   * @see https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media
+   */
+  async uploadToWhatsAppMedia(
+    phoneNumberId: string,
+    accessToken: string,
+    file: Express.Multer.File,
+  ): Promise<string> {
+    const formData = new FormData();
+    formData.append('messaging_product', 'whatsapp');
+    formData.append('type', file.mimetype);
+    formData.append(
+      'file',
+      new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }),
+      file.originalname || 'upload',
+    );
+
+    const response = await fetch(
+      `https://graph.facebook.com/v23.0/${phoneNumberId}/media`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: formData,
+      },
+    );
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new InternalServerErrorException(
+        `WhatsApp media upload failed (${response.status}): ${body}`,
+      );
+    }
+
+    const result = (await response.json()) as { id: string };
+    return result.id;
+  }
+
+  /**
    * Downloads WhatsApp media by its media ID.
    * Checks local cache first — if already downloaded, returns the cached file.
    *

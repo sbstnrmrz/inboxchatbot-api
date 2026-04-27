@@ -23,6 +23,7 @@ import { FilesService } from './files.service.js';
  * Examples:
  *   GET /files/whatsapp/image/wamid.ABC123
  *   GET /files/instagram/video/mid.XYZ789
+ *   GET /files/client/image/1743520000000-abc1234
  */
 @Controller('files')
 export class FilesController {

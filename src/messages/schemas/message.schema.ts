@@ -79,9 +79,19 @@ export interface MessageSender {
  * Both fields are optional so the same interface works for either channel.
  */
 export interface MessageMedia {
-  /** WhatsApp media ID (used to retrieve the media from the WA Cloud API) */
+  /**
+   * Unified local media identifier — the filename stem used to serve the file.
+   * Combined with the message channel and type gives the serving URL:
+   *   GET /files/{channel}/{mediaType}/{id}
+   *
+   * Inbound WhatsApp : equals whatsappMediaId
+   * Inbound Instagram: equals the message mid (externalId)
+   * Agent upload     : a generated fileId
+   */
+  id?: string;
+  /** WhatsApp media ID — kept for WA Cloud API operations (send/download) */
   whatsappMediaId?: string;
-  /** Direct URL — always present for Instagram, may be resolved for WhatsApp */
+  /** Direct URL — present for Instagram inbound (CDN URL, may expire) */
   url?: string;
   mimeType?: string;
   /** SHA-256 checksum (WhatsApp only) */

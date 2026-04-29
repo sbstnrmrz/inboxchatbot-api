@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type { Response, Request as ExpressRequest } from 'express';
 import * as fs from 'fs';
+import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
 import { FilesService } from './files.service.js';
 
 /**
@@ -28,6 +29,40 @@ import { FilesService } from './files.service.js';
 @Controller('files')
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
+
+  /**
+   * Public file serving for Instagram outbound media.
+   * Instagram's servers need to fetch agent-uploaded images before sending them
+   * to users — they cannot carry a session cookie, so this route is unauthenticated.
+   * The tenantId in the path provides namespace isolation.
+   *
+   * GET /files/public/:tenantId/:channel/:mediaType/:mediaId
+   */
+  @Get('public/:tenantId/:channel/:mediaType/:mediaId')
+  @AllowAnonymous()
+  async servePublicFile(
+    @Param('tenantId') tenantId: string,
+    @Param('channel') channel: string,
+    @Param('mediaType') mediaType: string,
+    @Param('mediaId') mediaId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const file = this.filesService.getLocalFile(
+      tenantId,
+      channel.toLowerCase(),
+      mediaType.toLowerCase(),
+      mediaId,
+    );
+
+    const stat = fs.statSync(file.filePath);
+
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Content-Length', stat.size);
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+
+    const stream = fs.createReadStream(file.filePath);
+    stream.pipe(res);
+  }
 
   @Get(':channel/:mediaType/:mediaId')
   async serveFile(

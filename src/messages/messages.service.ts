@@ -444,8 +444,16 @@ export class MessagesService {
           attachment?.type,
         );
 
+        const attachmentMimeType = attachment
+          ? this.mimeTypeFromInstagramAttachment(attachment.type)
+          : undefined;
+
         const media = attachment?.payload?.url
-          ? { id: event.message.mid, url: attachment.payload.url }
+          ? {
+              id: event.message.mid,
+              url: attachment.payload.url,
+              mimeType: attachmentMimeType,
+            }
           : undefined;
 
         // ── 4. Persist message ──────────────────────────────────────────────
@@ -490,11 +498,8 @@ export class MessagesService {
 
         // ── Fire-and-forget media download ──────────────────────────────────
         // Instagram CDN URLs expire, so we download immediately on receipt.
-        if (attachment?.payload?.url) {
+        if (attachment?.payload?.url && attachmentMimeType) {
           const mediaTypeSlug = attachment.type; // e.g. "image", "video"
-          const mimeType = this.mimeTypeFromInstagramAttachment(
-            attachment.type,
-          );
           // Use the message's external ID (mid) as the stable cache key
           const cacheId = event.message.mid;
 
@@ -504,7 +509,7 @@ export class MessagesService {
               cacheId,
               mediaTypeSlug,
               attachment.payload.url,
-              mimeType,
+              attachmentMimeType,
             )
             .catch((err: unknown) => {
               this.logger.error(
@@ -1070,7 +1075,8 @@ export class MessagesService {
       if (!recipientId) throw new BadRequestException(`Customer has no Instagram ID`);
 
       const baseUrl = this.configService.get<string>('BASE_URL') ?? '';
-      const url = `${baseUrl}/files/${channel}/${mediaType}/${fileId}`;
+      // Must be a public URL — Instagram's servers fetch it without auth cookies
+      const url = `${baseUrl}/files/public/${tenantId}/${channel}/${mediaType}/${fileId}`;
 
       const igResponse = await this.callInstagramApi(
         igInfo.accountId,
@@ -1085,6 +1091,7 @@ export class MessagesService {
 
       externalId = igResponse.message_id;
       media = { id: fileId, url, mimeType, caption };
+
 
     } else {
       throw new BadRequestException(`Unsupported channel: ${conversation.channel}`);

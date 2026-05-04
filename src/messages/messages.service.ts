@@ -1065,7 +1065,9 @@ export class MessagesService {
       );
 
       externalId = waResponse.messages[0]?.id;
-      media = { id: fileId, whatsappMediaId, mimeType, caption };
+      const waBaseUrl = this.configService.get<string>('BASE_URL') ?? '';
+      const waUrl = `${waBaseUrl}/files/public/${tenantId}/${channel}/${mediaType}/${fileId}`;
+      media = { id: fileId, whatsappMediaId, mimeType, caption, url: waUrl };
 
     } else if (conversation.channel === ConversationChannel.Instagram) {
       const igInfo = tenant.instagramInfo;

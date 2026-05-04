@@ -728,10 +728,12 @@ export class MessagesService {
       body['message'] = {
         attachment: {
           type: dto.messageType.toLowerCase(),
-          payload: { url: dto.media.url },
+          payload: { url: dto.media.url, is_reusable: true },
         },
       };
     }
+
+    this.logger.debug(`[IG] Sending to ${igUserId}: ${JSON.stringify(body)}`);
 
     const response = await fetch(
       `https://graph.instagram.com/v23.0/${igUserId}/messages`,
@@ -1077,6 +1079,14 @@ export class MessagesService {
 
       const baseUrl = this.configService.get<string>('BASE_URL');
       if (!baseUrl) throw new Error('BASE_URL env var is not set — required for Instagram media messages');
+
+      // Instagram DM only accepts JPEG and PNG for image attachments
+      if (mediaType === 'image' && mimeType !== 'image/jpeg' && mimeType !== 'image/png') {
+        throw new BadRequestException(
+          `Instagram only supports JPEG and PNG images. Received: ${mimeType}`,
+        );
+      }
+
       // Must be a public URL — Instagram's servers fetch it without auth cookies
       const url = `${baseUrl}/files/public/${tenantId}/${channel}/${mediaType}/${fileId}`;
 

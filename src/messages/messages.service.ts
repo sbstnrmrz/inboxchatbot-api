@@ -746,7 +746,8 @@ export class MessagesService {
     );
 
     if (!response.ok) {
-      throw new Error(`Instagram API error: ${response.status}`);
+      const errorBody = await response.text().catch(() => '');
+      throw new Error(`Instagram API error: ${response.status} — ${errorBody}`);
     }
 
     return response.json() as Promise<{ message_id: string }>;
@@ -1074,7 +1075,8 @@ export class MessagesService {
       const recipientId = (customer as any).instagramInfo?.accountId;
       if (!recipientId) throw new BadRequestException(`Customer has no Instagram ID`);
 
-      const baseUrl = this.configService.get<string>('BASE_URL') ?? '';
+      const baseUrl = this.configService.get<string>('BASE_URL');
+      if (!baseUrl) throw new Error('BASE_URL env var is not set — required for Instagram media messages');
       // Must be a public URL — Instagram's servers fetch it without auth cookies
       const url = `${baseUrl}/files/public/${tenantId}/${channel}/${mediaType}/${fileId}`;
 

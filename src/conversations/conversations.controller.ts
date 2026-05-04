@@ -23,6 +23,7 @@ import { MessageDocument } from '../messages/schemas/message.schema.js';
 import { ChatGateway } from '../chat/chat.gateway.js';
 import { ConversationEvent } from '../chat/enums/conversation-events.enum.js';
 import { TagEvent } from '../chat/enums/tag-events.enum.js';
+import { CountMessagesDto } from '../messages/dto/count-messages.dto.js';
 
 @Controller('conversations')
 export class ConversationsController {
@@ -59,6 +60,37 @@ export class ConversationsController {
     }
 
     return this.conversationsService.findAll(req.tenantId, dto);
+  }
+
+  /**
+   * Returns the total number of conversations with more than 2 messages for the current tenant.
+   * Optionally filtered by creation date via `date`, `from`, or `to`.
+   *
+   * GET /conversations/count
+   */
+  @Get('count')
+  async count(
+    @Query() dto: CountMessagesDto,
+    @Request() req: ExpressRequest & { tenantId?: string },
+  ): Promise<{ total: number; whatsapp: number; instagram: number }> {
+    if (!req.tenantId) {
+      throw new UnauthorizedException('Tenant not resolved');
+    }
+    return this.conversationsService.count(req.tenantId, dto);
+  }
+
+  /**
+   * Returns the total number of conversations with more than 2 messages for a specific tenant by ID.
+   * Intended for admin/cross-tenant use.
+   *
+   * GET /conversations/count/:tenantId
+   */
+  @Get('count/:tenantId')
+  async countByTenant(
+    @Param('tenantId') tenantId: string,
+    @Query() dto: CountMessagesDto,
+  ): Promise<{ total: number; whatsapp: number; instagram: number }> {
+    return this.conversationsService.count(tenantId, dto);
   }
 
   @Get(':id')

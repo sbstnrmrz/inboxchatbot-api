@@ -6,6 +6,8 @@ import {
   ConversationDocument,
 } from './schemas/conversation.schema.js';
 import { Customer, CustomerDocument } from '../customers/schemas/customer.schema.js';
+import { Message, MessageDocument } from '../messages/schemas/message.schema.js';
+import { CountMessagesDto } from '../messages/dto/count-messages.dto.js';
 
 export type ConversationWithCustomer = Omit<Conversation, 'customerId'> & {
   _id: Types.ObjectId;
@@ -26,7 +28,73 @@ export class ConversationsService {
     private readonly conversationModel: Model<ConversationDocument>,
     @InjectModel(Customer.name)
     private readonly customerModel: Model<CustomerDocument>,
+    @InjectModel(Message.name)
+    private readonly messageModel: Model<MessageDocument>,
   ) {}
+
+  async count(
+    tenantId: string,
+    dto: CountMessagesDto = {},
+  ): Promise<{ total: number; whatsapp: number; instagram: number }> {
+    const tenantObjectId = new Types.ObjectId(tenantId);
+    const match: Record<string, unknown> = { tenantId: tenantObjectId };
+
+    if (dto.date) {
+      const start = new Date(dto.date);
+      start.setUTCHours(0, 0, 0, 0);
+      const end = new Date(dto.date);
+      end.setUTCHours(23, 59, 59, 999);
+      match['createdAt'] = { $gte: start, $lte: end };
+    } else if (dto.from || dto.to) {
+      const range: Record<string, Date> = {};
+      if (dto.from) range['$gte'] = new Date(dto.from);
+      if (dto.to) {
+        const end = new Date(dto.to);
+        if (!/T\d{2}:\d{2}/.test(dto.to)) end.setUTCHours(23, 59, 59, 999);
+        range['$lte'] = end;
+      }
+      match['createdAt'] = range;
+    }
+
+    const rows = await this.conversationModel.aggregate<{
+      channel: string;
+      count: number;
+    }>([
+      { $match: match },
+      {
+        $lookup: {
+          from: this.messageModel.collection.name,
+          let: { convId: '$_id', tenantId: '$tenantId' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$conversationId', '$$convId'] },
+                    { $eq: ['$tenantId', '$$tenantId'] },
+                  ],
+                },
+              },
+            },
+            { $count: 'total' },
+          ],
+          as: 'messageSummary',
+        },
+      },
+      { $match: { 'messageSummary.0.total': { $gt: 2 } } },
+      { $group: { _id: '$channel', count: { $sum: 1 } } },
+      { $project: { _id: 0, channel: '$_id', count: 1 } },
+    ]);
+
+    const result = { total: 0, whatsapp: 0, instagram: 0 };
+    for (const row of rows) {
+      const key = row.channel.toLowerCase() as 'whatsapp' | 'instagram';
+      result[key] = row.count;
+      result.total += row.count;
+    }
+
+    return result;
+  }
 
   /**
    * Returns a paginated list of conversations for a tenant, ordered by

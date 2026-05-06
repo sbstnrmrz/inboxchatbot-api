@@ -670,7 +670,8 @@ export class MessagesService {
     );
 
     if (!response.ok) {
-      throw new Error(`WhatsApp API error: ${response.status}`);
+      const errorBody = await response.text().catch(() => '');
+      throw new Error(`WhatsApp API error: ${response.status} — ${errorBody}`);
     }
 
     return response.json() as Promise<WhatsAppSendMessageResponseDto>;

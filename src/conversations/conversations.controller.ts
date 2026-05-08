@@ -8,6 +8,7 @@ import {
   Delete,
   Query,
   Request,
+  Headers,
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Request as ExpressRequest } from 'express';
@@ -129,13 +130,15 @@ export class ConversationsController {
   @Patch(':id/toggle-bot')
   async toggleBot(
     @Param('id') id: string,
+    @Headers('tenant-id') tenantIdHeader: string,
     @Request() req: ExpressRequest & { tenantId?: string },
   ): Promise<Pick<Conversation, 'botEnabled' | 'botDisabledAt'>> {
-    if (!req.tenantId) {
+    const tenantId = tenantIdHeader ?? req.tenantId;
+    if (!tenantId) {
       throw new UnauthorizedException('Tenant not resolved');
     }
 
-    return this.conversationsService.toggleBot(req.tenantId, id);
+    return this.conversationsService.toggleBot(tenantId, id);
   }
 
   /**

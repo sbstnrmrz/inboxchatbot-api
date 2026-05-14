@@ -5,8 +5,7 @@ export type BookingDocument = Booking & Document;
 
 export enum BookingStatus {
   Pending = 'PENDING',
-  Done = 'DONE',
-  Canceled = 'CANCELED',
+  Completed = 'COMPLETED',
 }
 
 @Schema({ timestamps: true })

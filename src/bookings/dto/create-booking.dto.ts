@@ -1,4 +1,4 @@
-import { IsEnum, IsISO8601, IsOptional, IsString } from 'class-validator';
+import { IsEmail, IsEnum, IsISO8601, IsOptional, IsString } from 'class-validator';
 import { BookingStatus } from '../schemas/booking.schema.js';
 
 export class CreateBookingDto {
@@ -13,6 +13,10 @@ export class CreateBookingDto {
 
   @IsISO8601()
   endDate: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
 
   @IsOptional()
   @IsEnum(BookingStatus)

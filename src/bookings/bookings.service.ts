@@ -78,16 +78,16 @@ export class BookingsService {
 
   private async aggregateByStatus(
     match: Record<string, unknown>,
-  ): Promise<{ total: number; pending: number; done: number; canceled: number }> {
+  ): Promise<{ total: number; pending: number; completed: number }> {
     const rows = await this.bookingModel.aggregate<{ status: string; count: number }>([
       { $match: match },
       { $group: { _id: '$status', count: { $sum: 1 } } },
       { $project: { _id: 0, status: '$_id', count: 1 } },
     ]);
 
-    const result = { total: 0, pending: 0, done: 0, canceled: 0 };
+    const result = { total: 0, pending: 0, completed: 0 };
     for (const row of rows) {
-      const key = row.status.toLowerCase() as 'pending' | 'done' | 'canceled';
+      const key = row.status.toLowerCase() as 'pending' | 'completed';
       result[key] = row.count;
       result.total += row.count;
     }
@@ -97,7 +97,7 @@ export class BookingsService {
   async count(
     tenantId: string,
     dto: CountBookingsDto = {},
-  ): Promise<{ total: number; pending: number; done: number; canceled: number }> {
+  ): Promise<{ total: number; pending: number; completed: number }> {
     const match: Record<string, unknown> = {
       tenantId: new Types.ObjectId(tenantId),
       ...this.buildDateFilter(dto, 'startDate'),
@@ -108,7 +108,7 @@ export class BookingsService {
   async countCreated(
     tenantId: string,
     dto: CountBookingsDto = {},
-  ): Promise<{ total: number; pending: number; done: number; canceled: number }> {
+  ): Promise<{ total: number; pending: number; completed: number }> {
     const match: Record<string, unknown> = {
       tenantId: new Types.ObjectId(tenantId),
       ...this.buildDateFilter(dto, 'createdAt'),
@@ -120,6 +120,13 @@ export class BookingsService {
     const resolvedTenantId = await this.tenantsService.resolveId(tenantId);
     const customerId = await this.resolveCustomerId(resolvedTenantId, dto.customerId);
     this.logger.log(`Creating booking for customerId=${customerId} tenantId=${resolvedTenantId}`);
+
+    if (dto.email) {
+      await this.customerModel
+        .updateOne({ _id: customerId, tenantId: new Types.ObjectId(resolvedTenantId) }, { email: dto.email })
+        .exec();
+    }
+
     const booking = new this.bookingModel({
       tenantId: new Types.ObjectId(resolvedTenantId),
       customerId,
